@@ -1,0 +1,61 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: cus_postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: cus
+      POSTGRES_PASSWORD: cus
+      POSTGRES_DB: cus_ai
+    ports:
+      - "5432:5432"
+    volumes:
+      - cus_pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U cus -d cus_ai"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  ollama:
+    image: ollama/ollama:latest
+    container_name: cus_ollama
+    restart: unless-stopped
+    ports:
+      - "11434:11434"
+    volumes:
+      - cus_ollama:/root/.ollama
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu]
+    # On CPU-only hosts remove the `deploy` block above.
+
+  backend:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: cus_backend
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+      ollama:
+        condition: service_started
+    environment:
+      DATABASE_URL: postgresql+psycopg://cus:cus@postgres:5432/cus_ai
+      OLLAMA_BASE_URL: http://ollama:11434
+      CHROMA_PERSIST_DIR: /app/chroma_store
+      CORS_ORIGINS: "*"
+    ports:
+      - "8001:8000"
+    volumes:
+      - cus_chroma:/app/chroma_store
+
+volumes:
+  cus_pgdata:
+  cus_ollama:
+  cus_chroma:

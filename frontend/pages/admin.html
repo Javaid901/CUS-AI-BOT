@@ -1,0 +1,375 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Admin Dashboard — CUS AI</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Sora:wght@600;700;800&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="../css/main.css" />
+  <link rel="stylesheet" href="../css/responsive.css" />
+  <link rel="stylesheet" href="../css/admin.css" />
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><rect width='32' height='32' rx='7' fill='%230f7a4d'/><text x='16' y='22' font-size='16' fill='white' text-anchor='middle' font-family='Arial' font-weight='bold'>C</text></svg>" />
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+</head>
+<body>
+  <div class="admin-wrap">
+    <div class="admin-top">
+      <div class="logo">CUS</div>
+      <div class="t">CUS AI Admin<small>Knowledge Base Management</small></div>
+      <div class="right">
+        <span id="userLabel" style="display:none;"></span>
+        <span class="sse-status" id="sseStatus"><span class="sse-dot" id="sseDot"></span><span id="sseText">Connecting...</span></span>
+        <a class="admin-link" href="index.html">← Back to site</a>
+        <button id="logoutBtn" class="admin-link" style="display:none;background:none;border:none;cursor:pointer;">Logout</button>
+      </div>
+    </div>
+
+    <div class="admin-main">
+      <!-- Login -->
+      <div id="loginView">
+        <div class="admin-card auth-card">
+          <div class="brand" style="display:flex;align-items:center;gap:12px;">
+            <span class="logo" style="width:44px;height:44px;border-radius:12px;display:grid;place-items:center;background:linear-gradient(135deg,var(--green),var(--green-700));color:#fff;font-weight:800;font-family:var(--display);">CUS</span>
+            <span style="font-family:var(--display);font-weight:700;font-size:18px;color:var(--navy);">Admin Login</span>
+          </div>
+          <p class="sub">Sign in to manage knowledge sources.</p>
+          <form class="form" id="loginForm">
+            <label>Username<input type="text" name="username" required placeholder="admin" /></label>
+            <label>Password<input type="password" name="password" required placeholder="••••••••" /></label>
+            <button class="btn green block" type="submit">Sign In</button>
+          </form>
+          <p class="muted" style="font-size:13px;margin-top:14px;">Default: <code>admin</code> / <code>admin123</code> (seeded by backend).</p>
+        </div>
+      </div>
+
+      <!-- Dashboard -->
+      <div id="dashView" style="display:none;">
+        <!-- Health status bar -->
+        <div class="health-bar" id="healthBar">
+          <span class="hb-dot" id="hbDot"></span>
+          <span id="hbText">Loading health check...</span>
+          <span class="hb-actions">
+            <button class="btn sm green" id="syncBtn">&#x1f504; Sync Official Website</button>
+            <button class="btn sm ghost" id="refreshBtn">&#x21bb; Refresh</button>
+          </span>
+        </div>
+
+        <!-- Tab bar -->
+        <div class="tab-bar">
+          <button class="tab-btn active" data-tab="sources">&#x1f4da; Sources</button>
+          <button class="tab-btn" data-tab="sync">&#x1f504; Knowledge Sync</button>
+          <button class="tab-btn" data-tab="colleges">&#x1f3db; Colleges</button>
+          <button class="tab-btn" data-tab="insights">&#x1f4ca; AI Insights</button>
+          <button class="tab-btn" data-tab="authorities">&#x1f3db;&#xfe0f; Authorities</button>
+        </div>
+
+        <!-- === Sources Tab === -->
+        <div id="tabSources" class="tab-content">
+          <!-- Live KPI counters -->
+          <div class="kpi">
+            <div class="box"><div class="n" id="kDocs">-</div><div class="l">Documents</div></div>
+            <div class="box"><div class="n" id="kChunk">-</div><div class="l">Chunks</div></div>
+            <div class="box"><div class="n" id="kConvs">-</div><div class="l">Conversations</div></div>
+            <div class="box"><div class="n" id="kKB">-</div><div class="l">KB Files</div></div>
+          </div>
+          <div class="kpi kpi-sm">
+            <div class="box"><div class="n" id="kModel">-</div><div class="l">LLM</div></div>
+            <div class="box"><div class="n" id="kEmbed">-</div><div class="l">Embed</div></div>
+            <div class="box"><div class="n" id="kStatus">-</div><div class="l">Status</div></div>
+            <div class="box"><div class="n" id="kDB">-</div><div class="l">DB Size</div></div>
+            <div class="box"><div class="n" id="kQueueLen">0</div><div class="l">Queue</div></div>
+            <div class="box"><div class="n" id="kAvgIndexTime">-</div><div class="l">Avg Index</div></div>
+          </div>
+
+          <!-- Job dashboard panel -->
+          <div id="jobDashboard" class="admin-card" style="display:none;">
+            <h2>Processing Jobs</h2>
+            <div class="job-dashboard">
+              <div class="job-stat"><div class="js-icon queued">&#x23f3;</div><div class="js-body"><div class="js-num" id="jdQueued">0</div><div class="js-label">Queued</div></div></div>
+              <div class="job-stat"><div class="js-icon running">&#x1f7e6;</div><div class="js-body"><div class="js-num" id="jdRunning">0</div><div class="js-label">Running</div></div></div>
+              <div class="job-stat"><div class="js-icon done">&#x2705;</div><div class="js-body"><div class="js-num" id="jdCompleted">0</div><div class="js-label">Completed</div></div></div>
+              <div class="job-stat"><div class="js-icon failed">&#x274c;</div><div class="js-body"><div class="js-num" id="jdFailed">0</div><div class="js-label">Failed</div></div></div>
+            </div>
+            <div id="jobList" class="job-list"></div>
+          </div>
+
+          <!-- Upload Source -->
+          <div class="admin-card">
+            <h2>Upload Source</h2>
+            <p class="sub">Upload PDFs, DOCX, or TXT. Files are queued and processed in the background with real-time progress.</p>
+            <div class="dropzone" id="dropzone">
+              <div class="ic">&#x1f4c4;</div>
+              <div class="big">Drag &amp; drop files here</div>
+              <div class="small">or click to browse &middot; PDF, DOCX, TXT, MD</div>
+              <input type="file" id="fileInput" multiple accept=".pdf,.docx,.txt,.md" style="display:none;" />
+            </div>
+            <div id="uploadQueue" style="margin-top:16px;"></div>
+          </div>
+
+          <!-- Knowledge Sources -->
+          <div class="admin-card">
+            <h2>Knowledge Sources</h2>
+            <p class="sub">Indexed documents update automatically when processing finishes.</p>
+            <div id="docList"></div>
+          </div>
+        </div>
+
+        <!-- === Knowledge Sync Tab === -->
+        <div id="tabSync" class="tab-content" style="display:none;">
+          <div class="admin-card">
+            <h2>Knowledge Sync</h2>
+            <p class="sub">Acquire documents from approved sources (<code>cusrinagar.edu.in</code>). Downloaded files are processed through the same background pipeline with live status.</p>
+
+            <div style="display:flex;gap:12px;flex-wrap:wrap;margin-bottom:16px;">
+              <button class="btn green" id="syncRunBtn">&#x25b6; Run Sync</button>
+              <label style="display:flex;align-items:center;gap:6px;font-size:14px;cursor:pointer;">
+                <input type="checkbox" id="syncAutoDiscover" checked /> Auto-discover
+              </label>
+              <button class="btn sm ghost" id="syncRefreshBtn">&#x21bb; Refresh</button>
+            </div>
+
+            <div style="margin-bottom:12px;">
+              <input type="text" id="syncUrls" placeholder="Optional: comma-separated URLs to sync (leave blank for default)" style="width:100%;padding:8px 12px;border:1px solid var(--border);border-radius:6px;font-size:14px;" />
+            </div>
+
+            <div class="kpi kpi-sm" style="margin-bottom:16px;">
+              <div class="box"><div class="n" id="ksTotal">-</div><div class="l">Total</div></div>
+              <div class="box"><div class="n" id="ksIngested">-</div><div class="l">Ingested</div></div>
+              <div class="box"><div class="n" id="ksPending">-</div><div class="l">Pending</div></div>
+              <div class="box"><div class="n" id="ksFailed">-</div><div class="l">Failed</div></div>
+            </div>
+
+            <div class="sync-log" id="syncLog"></div>
+            <div id="syncSourceList"></div>
+          </div>
+        </div>
+
+        <!-- === Colleges Tab === -->
+        <div id="tabColleges" class="tab-content" style="display:none;">
+          <div class="admin-card">
+            <h2>College Management</h2>
+            <p class="sub">View and manage constituent colleges of Cluster University of Srinagar.</p>
+            <div style="display:flex;gap:12px;margin-bottom:16px;">
+              <button class="btn sm ghost" id="collegeRefreshBtn">&#x21bb; Refresh</button>
+            </div>
+            <div id="collegeStats" style="display:flex;gap:16px;flex-wrap:wrap;margin-bottom:16px;">
+              <span class="muted">Loading college data...</span>
+            </div>
+            <div id="collegeList"></div>
+          </div>
+          <div id="collegeDetail" style="display:none;">
+            <button class="btn sm ghost" id="collegeBackBtn" style="margin-bottom:12px;">&larr; Back to list</button>
+            <div class="admin-card" id="collegeDetailContent"></div>
+          </div>
+        </div>
+
+        <!-- === AI Insights Tab === -->
+        <div id="tabInsights" class="tab-content" style="display:none;">
+          <div style="display:flex;gap:12px;align-items:center;flex-wrap:wrap;margin-bottom:16px;">
+            <select id="insightPeriod" style="padding:8px 12px;border:1px solid var(--border);border-radius:6px;font-size:14px;background:#fff;">
+              <option value="today">Today</option>
+              <option value="week">This Week</option>
+              <option value="month" selected>This Month</option>
+              <option value="year">This Year</option>
+            </select>
+            <div style="flex:1;min-width:200px;display:flex;gap:6px;">
+              <input type="text" id="insightSearchInput" placeholder="Search analytics..." style="flex:1;padding:8px 12px;border:1px solid var(--border);border-radius:6px;font-size:14px;" />
+              <button class="btn sm green" id="insightSearchBtn">Search</button>
+            </div>
+            <div style="display:flex;gap:6px;align-items:center;">
+              <select id="insightExportFormat" style="padding:6px 10px;border:1px solid var(--border);border-radius:6px;font-size:13px;background:#fff;">
+                <option value="csv">CSV</option>
+                <option value="json">JSON</option>
+                <option value="xlsx">Excel</option>
+                <option value="pdf">PDF</option>
+              </select>
+              <button class="btn sm green" id="insightExportBtn">Export</button>
+            </div>
+          </div>
+
+          <div class="insight-nav">
+            <button class="insight-nav-btn active" data-section="overview">Overview</button>
+            <button class="insight-nav-btn" data-section="trending">Trending</button>
+            <button class="insight-nav-btn" data-section="courses">Courses</button>
+            <button class="insight-nav-btn" data-section="colleges">Colleges</button>
+            <button class="insight-nav-btn" data-section="services">Services</button>
+            <button class="insight-nav-btn" data-section="knowledge">Knowledge</button>
+            <button class="insight-nav-btn" data-section="gaps">Gaps</button>
+            <button class="insight-nav-btn" data-section="conversations">Conversations</button>
+            <button class="insight-nav-btn" data-section="queries">Queries</button>
+            <button class="insight-nav-btn" data-section="performance">Performance</button>
+            <button class="insight-nav-btn" data-section="insights">Smart AI</button>
+          </div>
+
+          <div id="insightSectionOverview" class="insight-section" style="display:block;"><div id="overviewContent"></div></div>
+          <div id="insightSectionTrending" class="insight-section" style="display:none;"><div id="trendingContent"></div></div>
+          <div id="insightSectionCourses" class="insight-section" style="display:none;"><div id="coursesContent"></div></div>
+          <div id="insightSectionColleges" class="insight-section" style="display:none;"><div id="collegesContent"></div></div>
+          <div id="insightSectionServices" class="insight-section" style="display:none;"><div id="servicesContent"></div></div>
+          <div id="insightSectionKnowledge" class="insight-section" style="display:none;"><div id="knowledgeContent"></div></div>
+          <div id="insightSectionGaps" class="insight-section" style="display:none;"><div id="gapsContent"></div></div>
+          <div id="insightSectionConversations" class="insight-section" style="display:none;"><div id="conversationsContent"></div></div>
+          <div id="insightSectionQueries" class="insight-section" style="display:none;"><div id="queriesContent"></div></div>
+          <div id="insightSectionPerformance" class="insight-section" style="display:none;"><div id="performanceContent"></div></div>
+          <div id="insightSectionInsights" class="insight-section" style="display:none;"><div id="insightsContent"></div></div>
+          <div id="searchResults"></div>
+        </div>
+        <!-- === Authorities Tab === -->
+        <div id="tabAuthorities" class="tab-content" style="display:none;">
+          <div class="admin-card">
+            <div class="auth-toolbar">
+              <div class="auth-toolbar-left">
+                <div class="auth-search-box">
+                  <span class="auth-search-icon">&#x1f50d;</span>
+                  <input type="text" id="authSearchInput" placeholder="Search by name, department, or keyword..." />
+                  <button class="auth-search-clear" id="authSearchClear" title="Clear">&times;</button>
+                </div>
+                <select id="authDeptFilter" class="auth-filter">
+                  <option value="">All Departments</option>
+                </select>
+<!-- type filter unused in current API schema -->
+                <select id="authStatusFilter" class="auth-filter">
+                  <option value="">All Status</option>
+                  <option value="active">Active</option>
+                  <option value="inactive">Inactive</option>
+                </select>
+              </div>
+              <div class="auth-toolbar-right">
+                <div class="auth-view-toggle" id="authViewToggle">
+                  <button class="auth-view-btn active" data-view="table" title="Table View">&#x2630;</button>
+                  <button class="auth-view-btn" data-view="card" title="Card View">&#x1f5bc;</button>
+                </div>
+                <button class="btn sm green" id="authExportBtn">&#x1f4e5; Export</button>
+                <button class="btn sm ghost" id="authImportBtn">&#x1f4c2; Import</button>
+                <button class="btn green" id="authAddBtn">+ Add Authority</button>
+              </div>
+            </div>
+            <div id="authorityLoading" class="auth-loading">Loading authorities...</div>
+            <div id="authorityTable" class="auth-table-wrap"></div>
+            <div id="authorityCards" class="auth-cards" style="display:none;"></div>
+            <div id="authorityEmpty" class="auth-empty" style="display:none;">
+              <div class="auth-empty-icon">&#x1f3db;</div>
+              <div class="auth-empty-text">No authorities found</div>
+              <p class="muted">Add your first authority or adjust search filters.</p>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Authority Modal -->
+  <div class="modal-overlay" id="authModal" style="display:none;">
+    <div class="modal-box">
+      <div class="modal-header">
+        <h3 id="authModalTitle">Add Authority</h3>
+        <button class="modal-close" id="authModalClose">&times;</button>
+      </div>
+      <form id="authForm" class="form">
+        <div class="modal-body">
+          <div class="auth-form-row">
+            <label>Department <span class="req">*</span>
+              <input type="text" name="department_name" required placeholder="e.g. Registrar Office" />
+            </label>
+            <label>Office Name <span class="req">*</span>
+              <input type="text" name="authority_name" required placeholder="e.g. Office of the Registrar" />
+            </label>
+          </div>
+          <div class="auth-form-row">
+            <label>Phone <span class="req">*</span>
+              <input type="text" name="phone" required placeholder="e.g. +91-194-2500000" />
+            </label>
+            <label>Email <span class="req">*</span>
+              <input type="email" name="email" required placeholder="e.g. registrar@cusrinagar.edu.in" />
+            </label>
+          </div>
+          <div class="auth-form-row">
+            <label>Designation
+              <input type="text" name="designation" placeholder="e.g. Head of Admissions" />
+            </label>
+            <label>Priority
+              <input type="number" name="priority" min="0" max="100" value="10" />
+            </label>
+          </div>
+          <label>Description
+            <textarea name="description" rows="2" placeholder="Brief description of this office's responsibilities..."></textarea>
+          </label>
+          <div class="auth-form-row">
+            <label>Office Address
+              <textarea name="office_address" rows="2" placeholder="Physical address..."></textarea>
+            </label>
+            <label>Office Location
+              <input type="text" name="office_location" placeholder="e.g. Administrative Block, 2nd Floor" />
+            </label>
+          </div>
+          <div class="auth-form-row">
+            <label>Alternate Phone
+              <input type="text" name="alternate_phone" placeholder="e.g. +91-194-2500000" />
+            </label>
+            <label>Website
+              <input type="url" name="website" placeholder="e.g. https://cusrinagar.edu.in" />
+            </label>
+          </div>
+          <div class="auth-form-row">
+            <label>Office Timings
+              <input type="text" name="office_timings" placeholder="e.g. 10:00 AM – 4:00 PM" />
+            </label>
+            <label>Working Days
+              <input type="text" name="working_days" placeholder="e.g. Monday – Friday" />
+            </label>
+          </div>
+          <label>Services Offered (comma separated)
+            <input type="text" name="services_offered" placeholder="e.g. Admissions, Fee Collection, Exam Forms" />
+          </label>
+          <label>Keywords (comma separated)
+            <input type="text" name="keywords" placeholder="e.g. registration, admission, fee" />
+          </label>
+          <div class="auth-form-row">
+            <label>Emergency Contact
+              <input type="text" name="emergency_contact" placeholder="e.g. +91-XXXXX-XXXXX" />
+            </label>
+            <label class="auth-checkbox-label">
+              <input type="checkbox" name="active" checked /> Active
+            </label>
+          </div>
+          <input type="hidden" name="authority_id" value="" />
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn ghost" id="authModalCancel">Cancel</button>
+          <button type="submit" class="btn green" id="authModalSave">Save Authority</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- Bulk Import Modal -->
+  <div class="modal-overlay" id="authImportModal" style="display:none;">
+    <div class="modal-box modal-box-sm">
+      <div class="modal-header">
+        <h3>Bulk Import Authorities</h3>
+        <button class="modal-close" id="authImportModalClose">&times;</button>
+      </div>
+      <div class="modal-body">
+        <p class="sub">Upload a JSON or CSV file with authority records. <a href="#" id="authDownloadTemplate" style="color:var(--green);">Download template</a></p>
+        <div class="dropzone" id="authImportDropzone">
+          <div class="ic">&#x1f4c2;</div>
+          <div class="big">Drop JSON or CSV file here</div>
+          <div class="small">or click to browse</div>
+          <input type="file" id="authImportFileInput" accept=".json,.csv" style="display:none;" />
+        </div>
+        <div id="authImportResult" style="margin-top:12px;"></div>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn ghost" id="authImportCancel">Cancel</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="toast-container" id="toastContainer"></div>
+
+  <script src="../js/config.js?v=3"></script>
+  <script src="../js/admin.js?v=4"></script>
+  <script src="../js/admin_insights.js?v=1"></script>
+</body>
+</html>

@@ -1,0 +1,30 @@
+{
+  "total_chars": 119688,
+  "total_words": 15029,
+  "sections": [
+    "1. University Overview",
+    "2. Admissions (UG, PG, NEP, DYD)",
+    "3. Notices and Notifications",
+    "4. Official PDF Documents (7 PDFs)",
+    "5. Programs and Courses (with fees)",
+    "6. Examinations and Results",
+    "7. Downloads and Resources"
+  ],
+  "pdfs_downloaded": [
+    "ug_admission_2026",
+    "pg_extension",
+    "pg_syllabus",
+    "dyd_programmes",
+    "pg_programmes",
+    "commencement",
+    "lateral_syllabus"
+  ],
+  "web_pages_scraped": [
+    "home",
+    "admissions_registration",
+    "nep_admissions",
+    "notices",
+    "ug_admission_notice",
+    "educationdunia"
+  ]
+}

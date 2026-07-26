@@ -1,0 +1,51 @@
+target-version = "py314"
+
+# Exclude common vendored/test dirs
+exclude = ["__pycache__", ".pytest_cache", "migrations", ".git"]
+
+[lint]
+select = ["ALL"]
+ignore = [
+    "B008",     # Depends() in FastAPI defaults is correct pattern
+    "BLE001",   # Blind except Exception - intentional in many places; review manually
+    "S110",     # try-except-pass - review manually
+    "S112",     # try-except-continue - review manually
+    "D",        # docstring rules (not project convention)
+    "COM812",   # trailing comma missing (not in project style)
+    "ISC001",   # implicit string concat (not in project style)
+    "PLR2004",  # magic values
+    "PLR0911",  # too many returns
+    "PLR0912",  # too many branches
+    "PLR0913",  # too many arguments
+    "PLR0915",  # too many statements
+    "TD",       # TODO/FIXME flags
+    "ERA",      # commented-out code
+    "FBT",      # boolean positional arg flags
+    "FIX002",   # line contains TODO
+    "EM",       # exception message rules
+    "PYI",      # type stub rules
+    "ANN",      # annotation rules
+    "SLF001",   # private member access
+    "TCH",      # type-checking import rules
+    "RUF022",   # __all__ ordering
+    "RUF023",   # __slots__ ordering
+    "RUF100",   # unused noqa
+    "PERF203",  # try-except inside loop
+    "PERF401",  # loop append to list
+    "CPY001",   # copyright notice (not a priority)
+    "E501",     # line length (will be addressed over time)
+    "S311",     # pseudo-random in seeders (acceptable)
+    "INP001",   # implicit namespace packages (fixed where needed)
+    "S324",     # md5 in response cache (acceptable for cache keys)
+]
+
+[lint.per-file-ignores]
+"**/routes.py" = ["F401"]
+"**/models.py" = ["F401"]
+"**/__init__.py" = ["F401", "RUF022"]
+"**/conftest.py" = ["ARG001"]
+
+[format]
+quote-style = "double"
+indent-style = "space"
+line-ending = "auto"
