@@ -43,6 +43,14 @@ def _safe_json_load(value: Any, default: Any = None) -> Any:
     return default
 
 
+def _scheme_display(scheme: str | None) -> str:
+    """Human-readable label for a stored academic scheme value."""
+    if not scheme:
+        return "Not specified"
+    key = str(scheme).strip().lower()
+    return {"cbcs": "CBCS (Choice Based Credit System)", "nep": "NEP 2020", "nep2020": "NEP 2020"}.get(key, scheme)
+
+
 def _get_student(params: dict, db: Session | None = None) -> dict | None:
     """Look up a student by reg_no from params. Returns student info dict or None."""
     reg_no = params.get("reg_no")
@@ -74,6 +82,7 @@ def _get_student(params: dict, db: Session | None = None) -> dict | None:
             "phone": s.phone,
             "college": s.college,
             "programme": s.programme,
+            "academic_scheme": s.academic_scheme,
             "semester": s.current_semester,
             "admission_year": s.admission_year,
             "batch": s.batch,
@@ -812,6 +821,7 @@ class ProfileConnector(ServiceConnector):
                 {"label": "Phone", "value": student["phone"] or "-"},
                 {"label": "College", "value": student["college"] or "-"},
                 {"label": "Programme", "value": student["programme"].upper()},
+                {"label": "Academic Scheme", "value": _scheme_display(student.get("academic_scheme"))},
                 {"label": "Current Semester", "value": str(student["semester"])},
                 {"label": "Admission Year", "value": str(student["admission_year"])},
                 {"label": "Batch", "value": student["batch"] or "-"},

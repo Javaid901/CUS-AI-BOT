@@ -57,6 +57,9 @@ def stream_answer(question: str, context: str):
     """
     Yield tokens (strings) from the Ollama streaming endpoint.
     Raises GenerationError on connection/HTTP failure.
+
+    Sync variant — for CLI/standalone use. The async SSE path must use
+    stream_answer_async so per-token network reads never block the event loop.
     """
     payload = _build_payload(question, context)
     client = _get_client()
@@ -78,6 +81,38 @@ def stream_answer(question: str, context: str):
                 token = obj.get("response")
                 if token:
                     yield token
+    except httpx.HTTPError as exc:
+        raise GenerationError(f"Ollama request failed: {exc}") from exc
+
+
+async def stream_answer_async(question: str, context: str):
+    """
+    Async twin of stream_answer — yields tokens without blocking the loop.
+
+    Uses its own AsyncClient per call so the pooled sync client and its lock
+    stay untouched; an async context manager guarantees connection cleanup.
+    Raises GenerationError on connection/HTTP failure.
+    """
+    payload = _build_payload(question, context)
+    try:
+        async with httpx.AsyncClient(timeout=_GEN_TIMEOUT) as client:
+            async with client.stream(
+                "POST", f"{settings.OLLAMA_BASE_URL}/api/generate", json=payload
+            ) as resp:
+                if resp.status_code != 200:
+                    raise GenerationError(f"Ollama returned HTTP {resp.status_code}")
+                async for line in resp.aiter_lines():
+                    if not line:
+                        continue
+                    try:
+                        obj = json.loads(line)
+                    except json.JSONDecodeError:
+                        continue
+                    if obj.get("done"):
+                        return
+                    token = obj.get("response")
+                    if token:
+                        yield token
     except httpx.HTTPError as exc:
         raise GenerationError(f"Ollama request failed: {exc}") from exc
 

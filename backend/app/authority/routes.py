@@ -3,21 +3,25 @@ backend/app/authority/routes.py
 
 Admin CRUD API for Authority Management + public lookup endpoint.
 
-Admin endpoints  (prefix: /api/admin/authorities):
+Admin endpoints  (prefix: /api/admin/authorities) — SUPER ADMIN only:
   GET    /                        — list all authorities (with search/filter)
+  GET    /categories              — list grievance categories
+  POST   /categories              — create a grievance category
   GET    /departments             — list distinct department names
   GET    /{authority_id}          — get single authority
   POST   /                        — create authority
   PUT    /{authority_id}          — update authority
   DELETE /{authority_id}          — delete authority
   POST   /bulk-import             — bulk import from JSON array
+  POST   /import-official         — idempotent import of verified official data
   GET    /export                  — export all as CSV/JSON
   POST   /{authority_id}/toggle   — enable/disable authority
 
-Public endpoint  (prefix: /api/authority):
+Public endpoint  (prefix: /api/authority) — students can only reach ACTIVE data:
   GET    /lookup?q=...            — find matching authority for a query
   GET    /departments             — list departments
-  GET    /{authority_id}          — get authority contact card
+  GET    /categories              — list active grievance categories
+  GET    /{authority_id}          — get authority contact card (404 if inactive)
 """
 
 from __future__ import annotations
@@ -25,10 +29,15 @@ from __future__ import annotations
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from sqlalchemy.orm import Session
 
-from app.auth.security import require_admin
+from app.auth.security import require_superadmin
 from app.authority.matcher import find_authority, format_contact_card
 from app.authority.repository import list_all as repo_list_all
-from app.authority.schemas import AuthorityCreate, AuthorityUpdate
+from app.authority.schemas import (
+    AuthorityCreate,
+    AuthorityUpdate,
+    GrievanceCategoryCreate,
+    MatchGrievanceRequest,
+)
 from app.authority.service import authority_service
 from app.config import settings
 from app.database import get_db
@@ -38,7 +47,15 @@ from app.utils.logging import audit
 router = APIRouter(prefix=f"{settings.API_PREFIX}/admin/authorities", tags=["authority"])
 public_router = APIRouter(prefix=f"{settings.API_PREFIX}/authority", tags=["authority"])
 
-_protected = Depends(require_admin)
+# Only the existing Super Admin may manage authorities (spec: no hidden UI-only
+# protection; the backend enforces it). Plain "admin" users can still view the
+# lookup endpoints but cannot modify authority records.
+_superadmin = Depends(require_superadmin)
+
+
+def _duplicate_or_400(exc: Exception) -> HTTPException:
+    """Map validation-style errors (e.g. duplicate records) to 409 Conflict."""
+    return HTTPException(status_code=409, detail=str(exc))
 
 
 # ---------------------------------------------------------------------------
@@ -49,7 +66,7 @@ _protected = Depends(require_admin)
 @router.get("")
 def list_authorities(
     db: Session = Depends(get_db),
-    current: User = _protected,
+    current: User = _superadmin,
     query: str | None = Query(None, description="Search term"),
     department: str | None = Query(None, description="Filter by department"),
     active_only: bool = Query(False, description="Only active authorities"),
@@ -62,15 +79,56 @@ def list_authorities(
 @router.get("/departments")
 def list_departments(
     db: Session = Depends(get_db),
-    current: User = _protected,
+    current: User = _superadmin,
 ):
     return {"departments": authority_service.list_departments(db)}
+
+
+@router.get("/categories")
+def list_categories(
+    db: Session = Depends(get_db),
+    current: User = _superadmin,
+):
+    return {"categories": authority_service.list_categories(db)}
+
+
+@router.post("/categories", status_code=201)
+def create_category(
+    body: GrievanceCategoryCreate,
+    db: Session = Depends(get_db),
+    current: User = _superadmin,
+    request: Request = None,
+):
+    try:
+        cat = authority_service.create_category(db, body.name, description=body.description, slug=body.slug)
+    except ValueError as exc:
+        raise _duplicate_or_400(exc)
+    audit(db, "authority.category_create", actor_id=str(current.id), actor_role=current.role, detail=f"Created category {cat['name']}", ip=request.client.host if request else None)
+    return cat
+
+
+@router.post("/import-official", status_code=200)
+def import_official(
+    db: Session = Depends(get_db),
+    current: User = _superadmin,
+    request: Request = None,
+):
+    """Idempotent import of verified official Cluster University authorities.
+
+    Matches on authority name; creates missing records, fills only unverified
+    contact fields, and never duplicates or destroys existing data.
+    """
+    from app.authority.seed_official import run_official_import
+
+    result = run_official_import(db)
+    audit(db, "authority.import_official", actor_id=str(current.id), actor_role=current.role, detail=f"Official import: {result}", ip=request.client.host if request else None)
+    return {"status": "imported", **result}
 
 
 @router.get("/export")
 def export_authorities(
     db: Session = Depends(get_db),
-    current: User = _protected,
+    current: User = _superadmin,
     fmt: str = Query("json", pattern="^(json|csv)$"),
 ):
     rows = authority_service.search(db)
@@ -92,7 +150,7 @@ def export_authorities(
 def bulk_import(
     body: list[AuthorityCreate],
     db: Session = Depends(get_db),
-    current: User = _protected,
+    current: User = _superadmin,
     request: Request = None,
 ):
     rows = authority_service.bulk_create(db, body)
@@ -104,10 +162,13 @@ def bulk_import(
 def create_authority(
     body: AuthorityCreate,
     db: Session = Depends(get_db),
-    current: User = _protected,
+    current: User = _superadmin,
     request: Request = None,
 ):
-    row = authority_service.create(db, body)
+    try:
+        row = authority_service.create(db, body)
+    except ValueError as exc:
+        raise _duplicate_or_400(exc)
     audit(db, "authority.create", actor_id=str(current.id), actor_role=current.role, detail=f"Created {row['authority_name']}", ip=request.client.host if request else None)
     return row
 
@@ -116,7 +177,7 @@ def create_authority(
 def get_authority(
     authority_id: str,
     db: Session = Depends(get_db),
-    current: User = _protected,
+    current: User = _superadmin,
 ):
     row = authority_service.get_db(db, authority_id)
     if not row:
@@ -129,10 +190,13 @@ def update_authority(
     authority_id: str,
     body: AuthorityUpdate,
     db: Session = Depends(get_db),
-    current: User = _protected,
+    current: User = _superadmin,
     request: Request = None,
 ):
-    row = authority_service.update(db, authority_id, body)
+    try:
+        row = authority_service.update(db, authority_id, body)
+    except ValueError as exc:
+        raise _duplicate_or_400(exc)
     if not row:
         raise HTTPException(status_code=404, detail="Authority not found")
     audit(db, "authority.update", actor_id=str(current.id), actor_role=current.role, detail=f"Updated {row['authority_name']}", ip=request.client.host if request else None)
@@ -143,7 +207,7 @@ def update_authority(
 def delete_authority(
     authority_id: str,
     db: Session = Depends(get_db),
-    current: User = _protected,
+    current: User = _superadmin,
     request: Request = None,
 ):
     row = authority_service.get_db(db, authority_id)
@@ -159,7 +223,7 @@ def delete_authority(
 def toggle_authority(
     authority_id: str,
     db: Session = Depends(get_db),
-    current: User = _protected,
+    current: User = _superadmin,
     request: Request = None,
 ):
     row = authority_service.get_db(db, authority_id)
@@ -191,11 +255,55 @@ def lookup_authority(
     }
 
 
+@public_router.post("/match")
+def match_grievance_authority(payload: MatchGrievanceRequest, db: Session = Depends(get_db)):
+    """Resolve the authority a student named in a grievance message.
+
+    Used by the chatbot to auto-select the authority and skip the selection
+    step. Status: matched | ambiguous | unavailable | none. Only ACTIVE,
+    non-deleted authorities can ever be returned as `authority`/`matches`.
+    """
+    return authority_service.match_for_grievance(db, payload.text)
+
+
 @public_router.get("/departments")
 def public_departments(
     db: Session = Depends(get_db),
 ):
     return {"departments": authority_service.list_departments(db)}
+
+
+@public_router.get("/active")
+def public_active_authorities(
+    db: Session = Depends(get_db),
+):
+    """Public list of ACTIVE authorities (student-facing).
+
+    Only the fields a student needs for the grievance workflow are exposed;
+    internal/operational fields (keywords, services, emergency contacts, etc.)
+    are never included. The database is the source of truth.
+    """
+    rows = repo_list_all(db, active_only=True)
+    return {
+        "authorities": [
+            {
+                "authority_id": r["id"],
+                "authority_name": r["authority_name"],
+                "department_name": r["department_name"] or "",
+                "designation": r.get("designation") or "",
+                "email": r["email"] or "",
+            }
+            for r in rows
+        ]
+    }
+
+
+@public_router.get("/categories")
+def public_categories(
+    db: Session = Depends(get_db),
+):
+    """Active grievance categories only (student-facing)."""
+    return {"categories": authority_service.list_categories(db, active_only=True)}
 
 
 @public_router.get("/{authority_id}")

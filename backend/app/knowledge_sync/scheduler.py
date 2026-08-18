@@ -1,4 +1,13 @@
-"""Optional scheduled sync — disabled by default. Enabled via KNOWLEDGE_SYNC_SCHEDULE."""
+"""DEPRECATED — scheduled sync for the legacy Knowledge Sync pipeline.
+
+The legacy pipeline (``app.knowledge_sync.engine``) is no longer exposed by
+any route; scheduled website syncing is provided by the Website Knowledge
+Sync engine's own scheduler (``app.knowledge_sync.web_scheduler``), which is
+started in ``app.main`` and controlled from the admin dashboard. This module
+is retained as an internal, unreferenced legacy artifact.
+
+Enabled via KNOWLEDGE_SYNC_SCHEDULE.
+"""
 
 from __future__ import annotations
 

@@ -422,7 +422,6 @@ def get_conversation_analytics(period: str = "month") -> dict[str, Any]:
             InteractionEvent.timestamp < end,
         ).all()
 
-        Counter()
         total_conv = len({e.conversation_id for e in events if e.conversation_id})
         total_clarifications = sum(e.clarification_count or 0 for e in events)
         completed = sum(1 for e in events if e.conversation_completed)

@@ -9,16 +9,18 @@
   <link rel="stylesheet" href="../css/main.css" />
   <link rel="stylesheet" href="../css/responsive.css" />
   <link rel="stylesheet" href="../css/admin.css" />
-  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><rect width='32' height='32' rx='7' fill='%230f7a4d'/><text x='16' y='22' font-size='16' fill='white' text-anchor='middle' font-family='Arial' font-weight='bold'>C</text></svg>" />
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><rect width='32' height='32' rx='7' fill='%230f7a4d'/><path d='M16 8 5 13l11 5 9-4.09V20h2v-7L16 8z' fill='white'/><path d='M9 17.18v4L16 25l7-3.82v-4L16 21l-7-3.82z' fill='white'/></svg>" />
   <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
 </head>
 <body>
   <div class="admin-wrap">
     <div class="admin-top">
-      <div class="logo">CUS</div>
+      <div class="logo"><svg viewBox="0 0 24 24" width="22" height="22" fill="currentColor" aria-hidden="true"><path d="M12 3 1 8l11 5 9-4.09V17h2V8L12 3z"/><path d="M5 13.18v4L12 21l7-3.82v-4L12 17l-7-3.82z"/></svg></div>
       <div class="t">CUS AI Admin<small>Knowledge Base Management</small></div>
       <div class="right">
         <span id="userLabel" style="display:none;"></span>
+        <img id="topAvatar" alt="Profile" style="display:none;width:30px;height:30px;border-radius:50%;object-fit:cover;border:2px solid rgba(255,255,255,.25);" />
+        <button id="profileBtn" class="admin-link" style="display:none;background:none;border:none;cursor:pointer;font-size:14px;" title="My Profile">&#x1f464;</button>
         <span class="sse-status" id="sseStatus"><span class="sse-dot" id="sseDot"></span><span id="sseText">Connecting...</span></span>
         <a class="admin-link" href="index.html">← Back to site</a>
         <button id="logoutBtn" class="admin-link" style="display:none;background:none;border:none;cursor:pointer;">Logout</button>
@@ -30,7 +32,7 @@
       <div id="loginView">
         <div class="admin-card auth-card">
           <div class="brand" style="display:flex;align-items:center;gap:12px;">
-            <span class="logo" style="width:44px;height:44px;border-radius:12px;display:grid;place-items:center;background:linear-gradient(135deg,var(--green),var(--green-700));color:#fff;font-weight:800;font-family:var(--display);">CUS</span>
+            <span class="logo" style="width:44px;height:44px;border-radius:12px;display:grid;place-items:center;background:linear-gradient(135deg,var(--green),var(--green-700));color:#fff;"><svg viewBox="0 0 24 24" width="22" height="22" fill="currentColor" aria-hidden="true"><path d="M12 3 1 8l11 5 9-4.09V17h2V8L12 3z"/><path d="M5 13.18v4L12 21l7-3.82v-4L12 17l-7-3.82z"/></svg></span>
             <span style="font-family:var(--display);font-weight:700;font-size:18px;color:var(--navy);">Admin Login</span>
           </div>
           <p class="sub">Sign in to manage knowledge sources.</p>
@@ -39,8 +41,7 @@
             <label>Password<input type="password" name="password" required placeholder="••••••••" /></label>
             <button class="btn green block" type="submit">Sign In</button>
           </form>
-          <p class="muted" style="font-size:13px;margin-top:14px;">Default: <code>admin</code> / <code>admin123</code> (seeded by backend).</p>
-        </div>
+                  </div>
       </div>
 
       <!-- Dashboard -->
@@ -50,7 +51,6 @@
           <span class="hb-dot" id="hbDot"></span>
           <span id="hbText">Loading health check...</span>
           <span class="hb-actions">
-            <button class="btn sm green" id="syncBtn">&#x1f504; Sync Official Website</button>
             <button class="btn sm ghost" id="refreshBtn">&#x21bb; Refresh</button>
           </span>
         </div>
@@ -58,10 +58,13 @@
         <!-- Tab bar -->
         <div class="tab-bar">
           <button class="tab-btn active" data-tab="sources">&#x1f4da; Sources</button>
-          <button class="tab-btn" data-tab="sync">&#x1f504; Knowledge Sync</button>
+          <button class="tab-btn" data-tab="websiteSync">&#x1f310; Website Sync</button>
           <button class="tab-btn" data-tab="colleges">&#x1f3db; Colleges</button>
           <button class="tab-btn" data-tab="insights">&#x1f4ca; AI Insights</button>
+          <button class="tab-btn" data-tab="catalogue">&#x1f4d6; Catalogue</button>
           <button class="tab-btn" data-tab="authorities">&#x1f3db;&#xfe0f; Authorities</button>
+          <button class="tab-btn" data-tab="authorityAdmins">&#x1f465; Authority Admins</button>
+          <button class="tab-btn" data-tab="profile">&#x1f464; My Profile</button>
         </div>
 
         <!-- === Sources Tab === -->
@@ -104,6 +107,49 @@
               <div class="small">or click to browse &middot; PDF, DOCX, TXT, MD</div>
               <input type="file" id="fileInput" multiple accept=".pdf,.docx,.txt,.md" style="display:none;" />
             </div>
+            <div class="meta-fields">
+              <div class="meta-field">
+                <label for="metaScheme">Academic Scheme</label>
+                <select id="metaScheme">
+                  <option value="">Auto-detect / Not set</option>
+                  <option value="nep2020">NEP 2020</option>
+                  <option value="cbcs">CBCS</option>
+                  <option value="nep">NEP (generic)</option>
+                </select>
+              </div>
+              <div class="meta-field">
+                <label for="metaProgramme">Programme</label>
+                <input type="text" id="metaProgramme" placeholder="e.g. bca, bsc, ba" />
+              </div>
+              <div class="meta-field">
+                <label for="metaDept">Department</label>
+                <input type="text" id="metaDept" placeholder="e.g. Computer Science" />
+              </div>
+              <div class="meta-field">
+                <label for="metaBatch">Batch</label>
+                <input type="text" id="metaBatch" placeholder="e.g. 2023-2026" />
+              </div>
+              <div class="meta-field">
+                <label for="metaSemester">Semester</label>
+                <input type="text" id="metaSemester" placeholder="e.g. 4" />
+              </div>
+              <div class="meta-field">
+                <label for="metaDocType">Document Type</label>
+                <select id="metaDocType">
+                  <option value="">Not set</option>
+                  <option value="syllabus">Syllabus</option>
+                  <option value="prospectus">Prospectus</option>
+                  <option value="fee_sheet">Fee Sheet</option>
+                  <option value="regulation">Regulation</option>
+                  <option value="notice">Notice</option>
+                  <option value="exam_scheme">Exam Scheme</option>
+                </select>
+              </div>
+              <div class="meta-field">
+                <label for="metaCategory">Category</label>
+                <input type="text" id="metaCategory" placeholder="e.g. nep2020" />
+              </div>
+            </div>
             <div id="uploadQueue" style="margin-top:16px;"></div>
           </div>
 
@@ -115,33 +161,77 @@
           </div>
         </div>
 
-        <!-- === Knowledge Sync Tab === -->
-        <div id="tabSync" class="tab-content" style="display:none;">
+        <!-- === Website Sync Tab (Enterprise Crawler Engine) === -->
+        <div id="tabWebsiteSync" class="tab-content" style="display:none;">
           <div class="admin-card">
-            <h2>Knowledge Sync</h2>
-            <p class="sub">Acquire documents from approved sources (<code>cusrinagar.edu.in</code>). Downloaded files are processed through the same background pipeline with live status.</p>
-
-            <div style="display:flex;gap:12px;flex-wrap:wrap;margin-bottom:16px;">
-              <button class="btn green" id="syncRunBtn">&#x25b6; Run Sync</button>
-              <label style="display:flex;align-items:center;gap:6px;font-size:14px;cursor:pointer;">
-                <input type="checkbox" id="syncAutoDiscover" checked /> Auto-discover
-              </label>
-              <button class="btn sm ghost" id="syncRefreshBtn">&#x21bb; Refresh</button>
+            <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px;margin-bottom:12px;">
+              <div>
+                <h2 style="margin:0;">Website Knowledge Sync</h2>
+                <p class="sub" style="margin:4px 0 0 0;">Crawls the university website, extracts semantic content, indexes it into RAG with source attribution. Source: <code id="wsBaseUrl">.</code></p>
+              </div>
+              <div style="display:flex;align-items:center;gap:12px;">
+                <button class="btn green" id="wsRunBtn">&#x25b6; Sync Now</button>
+                <button class="btn sm ghost" id="wsRefreshBtn">&#x21bb; Refresh</button>
+                <label class="toggle-switch" title="Enable / disable scheduled sync">
+                  <input type="checkbox" id="wsToggle" checked />
+                  <span class="toggle-slider"></span>
+                </label>
+              </div>
             </div>
 
-            <div style="margin-bottom:12px;">
-              <input type="text" id="syncUrls" placeholder="Optional: comma-separated URLs to sync (leave blank for default)" style="width:100%;padding:8px 12px;border:1px solid var(--border);border-radius:6px;font-size:14px;" />
+            <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:14px;align-items:center;">
+              <label class="muted" for="wsSchedule">Schedule</label>
+              <select id="wsSchedule" style="padding:6px 10px;border:1px solid var(--border);border-radius:6px;background:var(--card);color:var(--text);">
+                <option value="disabled">Disabled</option>
+                <option value="manual">Manual only</option>
+                <option value="hourly">Hourly</option>
+                <option value="daily">Daily</option>
+                <option value="weekly">Weekly</option>
+                <option value="monthly">Monthly</option>
+              </select>
+              <span id="wsLastRun" class="muted" style="font-size:13px;"></span>
             </div>
 
-            <div class="kpi kpi-sm" style="margin-bottom:16px;">
-              <div class="box"><div class="n" id="ksTotal">-</div><div class="l">Total</div></div>
-              <div class="box"><div class="n" id="ksIngested">-</div><div class="l">Ingested</div></div>
-              <div class="box"><div class="n" id="ksPending">-</div><div class="l">Pending</div></div>
-              <div class="box"><div class="n" id="ksFailed">-</div><div class="l">Failed</div></div>
+            <div class="kpi" style="margin-bottom:16px;">
+              <div class="box"><div class="n" id="wsTotal">-</div><div class="l">Pages</div></div>
+              <div class="box"><div class="n" id="wsIndexed">-</div><div class="l">Indexed</div></div>
+              <div class="box"><div class="n" id="wsDupe">-</div><div class="l">Duplicates</div></div>
+              <div class="box"><div class="n" id="wsFailed">-</div><div class="l">Failed</div></div>
             </div>
 
-            <div class="sync-log" id="syncLog"></div>
-            <div id="syncSourceList"></div>
+            <div id="wsStatusChips" style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:16px;"></div>
+
+            <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:12px;">
+              <input type="text" id="wsFilterQ" placeholder="Search URL / title..." style="flex:1;min-width:220px;padding:8px 12px;border:1px solid var(--border);border-radius:6px;font-size:14px;" />
+              <select id="wsFilterCategory" style="padding:8px 10px;border:1px solid var(--border);border-radius:6px;background:var(--card);color:var(--text);">
+                <option value="">All categories</option>
+              </select>
+              <select id="wsFilterStatus" style="padding:8px 10px;border:1px solid var(--border);border-radius:6px;background:var(--card);color:var(--text);">
+                <option value="">All statuses</option>
+                <option value="new">New</option>
+                <option value="updated">Updated</option>
+                <option value="unchanged">Unchanged</option>
+                <option value="archived">Archived</option>
+                <option value="failed">Failed</option>
+              </select>
+              <button class="btn sm ghost" id="wsApplyFilter">Apply</button>
+              <button class="btn sm ghost" id="wsDupesBtn">Scan Duplicates</button>
+            </div>
+
+            <div id="wsProgress" style="display:none;margin-bottom:12px;padding:10px 14px;border-radius:8px;background:var(--bg);border:1px solid var(--line);font-size:14px;">
+              <span class="hb-dot" id="wsProgressDot"></span>
+              <b id="wsProgressState">Idle</b>
+              <span id="wsProgressMsg" class="muted"></span><span id="wsProgressCounts" class="muted"></span>
+            </div>
+
+            <div id="wsMessage" class="sync-log" style="display:none;"></div>
+            <div id="wsPageList"></div>
+          </div>
+
+          <div class="admin-card" style="margin-top:20px;">
+            <h3 style="margin:0 0 8px 0;">Sync Runs</h3>
+            <p class="sub" style="margin:0 0 10px 0;">Every crawl pass is recorded with its counters.</p>
+            <div id="wsRunList"></div>
           </div>
         </div>
 
@@ -161,6 +251,10 @@
           <div id="collegeDetail" style="display:none;">
             <button class="btn sm ghost" id="collegeBackBtn" style="margin-bottom:12px;">&larr; Back to list</button>
             <div class="admin-card" id="collegeDetailContent"></div>
+          </div>
+          <div id="collegeKnowledge" style="display:none;">
+            <button class="btn sm ghost" id="collegeKnowledgeBackBtn" style="margin-bottom:12px;">&larr; Back</button>
+            <div id="collegeKnowledgeContent"></div>
           </div>
         </div>
 
@@ -215,7 +309,105 @@
           <div id="insightSectionInsights" class="insight-section" style="display:none;"><div id="insightsContent"></div></div>
           <div id="searchResults"></div>
         </div>
-        <!-- === Authorities Tab === -->
+
+        <!-- === Academic Catalogue Tab === -->
+        <div id="tabCatalogue" class="tab-content" style="display:none;">
+          <div class="admin-card">
+            <h2>Academic Catalogue (NEP)</h2>
+            <p style="color:var(--muted);margin-top:2px;">Manage programmes, subjects, minor disciplines, learning outcomes and curriculum documents used by the academic catalogue chatbot module.</p>
+          </div>
+          <div class="admin-card">
+            <div id="catalogueRoot" style="min-height:200px;"></div>
+          </div>
+        </div>
+
+        <!-- === My Profile Tab === -->
+      <div id="tabProfile" class="tab-content" style="display:none;">
+        <div class="admin-card">
+          <h2>My Profile</h2>
+          <p class="sub">Complete your admin profile — these details are shown on this panel.</p>
+          <div class="profile-grid">
+            <div class="profile-avatar-card">
+              <div class="profile-avatar" id="profileAvatar"><span class="profile-avatar-fallback">&#x1f464;</span><img id="profileAvatarImg" alt="Profile photo" style="display:none;" /></div>
+              <button class="btn sm ghost" id="avatarBtn" type="button">&#x1f4f7; Upload Photo</button>
+              <input type="file" id="avatarInput" accept="image/png,image/jpeg,image/webp,image/gif" style="display:none;" />
+              <button class="btn sm ghost" id="removeAvatarBtn" type="button" style="display:none;">&#x1f5d1; Remove Photo</button>
+              <p class="muted" style="font-size:12px;margin:0;">PNG, JPG, WEBP or GIF &middot; max 2 MB</p>
+            </div>
+            <div class="profile-form">
+              <div class="auth-form-row">
+                <label>Full Name
+                  <input type="text" id="pfFullName" placeholder="e.g. Dr. Ayesha Mir" />
+                </label>
+                <label>Designation
+                  <input type="text" id="pfDesignation" placeholder="e.g. Knowledge Base Administrator" />
+                </label>
+              </div>
+              <div class="auth-form-row">
+                <label>Email
+                  <input type="email" id="pfEmail" placeholder="admin@cus.ac.in" />
+                </label>
+                <label>Phone
+                  <input type="text" id="pfPhone" placeholder="+91-XXX-XXXXXXX" />
+                </label>
+              </div>
+              <div class="auth-form-row">
+                <label>Username
+                  <input type="text" id="pfUsername" disabled title="Change username in the section below" />
+                </label>
+                <label>Role
+                  <input type="text" id="pfRole" disabled />
+                </label>
+              </div>
+              <div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap;">
+                <button class="btn green" id="saveProfileBtn" type="button">&#x1f4be; Save Profile</button>
+                <span class="muted" id="profileMsg" style="font-size:13px;"></span>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div class="admin-card">
+          <h2>Change Username</h2>
+          <p class="sub">Pick a new login name. Your current session stays valid; next time you sign in use the new username.</p>
+          <div class="auth-form-row">
+            <label>New Username <span class="req">*</span>
+              <input type="text" id="newUsername" placeholder="3-32 chars: letters, digits, underscore" />
+            </label>
+            <label>Current Password <span class="req">*</span>
+              <input type="password" id="usernamePassword" placeholder="&#x2022;&#x2022;&#x2022;&#x2022;&#x2022;&#x2022;&#x2022;&#x2022;" autocomplete="current-password" />
+            </label>
+          </div>
+          <div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap;">
+            <button class="btn green" id="saveUsernameBtn" type="button">Update Username</button>
+            <span class="muted" id="usernameMsg" style="font-size:13px;"></span>
+          </div>
+        </div>
+
+        <div class="admin-card">
+          <h2>Change Password</h2>
+          <p class="sub">Set a new password for your admin account. All active sessions in other browsers will need to sign in again.</p>
+          <div class="auth-form-row">
+            <label>Current Password <span class="req">*</span>
+              <input type="password" id="currentPassword" placeholder="&#x2022;&#x2022;&#x2022;&#x2022;&#x2022;&#x2022;&#x2022;&#x2022;" autocomplete="current-password" />
+            </label>
+            <label>New Password <span class="req">*</span>
+              <input type="password" id="newPassword" placeholder="At least 6 characters" autocomplete="new-password" />
+            </label>
+          </div>
+          <div class="auth-form-row">
+            <label>Confirm New Password <span class="req">*</span>
+              <input type="password" id="confirmPassword" placeholder="&#x2022;&#x2022;&#x2022;&#x2022;&#x2022;&#x2022;&#x2022;&#x2022;" autocomplete="new-password" />
+            </label>
+          </div>
+          <div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap;">
+            <button class="btn green" id="changePwdBtn" type="button">Update Password</button>
+            <span class="muted" id="passwordMsg" style="font-size:13px;"></span>
+          </div>
+        </div>
+      </div>
+
+      <!-- === Authorities Tab === -->
         <div id="tabAuthorities" class="tab-content" style="display:none;">
           <div class="admin-card">
             <div class="auth-toolbar">
@@ -228,7 +420,9 @@
                 <select id="authDeptFilter" class="auth-filter">
                   <option value="">All Departments</option>
                 </select>
-<!-- type filter unused in current API schema -->
+                <select id="authCategoryFilter" class="auth-filter">
+                  <option value="">All Categories</option>
+                </select>
                 <select id="authStatusFilter" class="auth-filter">
                   <option value="">All Status</option>
                   <option value="active">Active</option>
@@ -240,6 +434,8 @@
                   <button class="auth-view-btn active" data-view="table" title="Table View">&#x2630;</button>
                   <button class="auth-view-btn" data-view="card" title="Card View">&#x1f5bc;</button>
                 </div>
+                <button class="btn sm ghost" id="authOfficialBtn" title="Import the verified official Cluster University authority directory (idempotent)">&#x1f310; Import Official</button>
+                <button class="btn sm ghost" id="authCatBtn" title="Manage grievance categories">&#x1f3db;&#xfe0f; Categories</button>
                 <button class="btn sm green" id="authExportBtn">&#x1f4e5; Export</button>
                 <button class="btn sm ghost" id="authImportBtn">&#x1f4c2; Import</button>
                 <button class="btn green" id="authAddBtn">+ Add Authority</button>
@@ -252,6 +448,51 @@
               <div class="auth-empty-icon">&#x1f3db;</div>
               <div class="auth-empty-text">No authorities found</div>
               <p class="muted">Add your first authority or adjust search filters.</p>
+            </div>
+          </div>
+        </div>
+
+        <!-- === Authority Admins Tab === -->
+        <div id="tabAuthorityAdmins" class="tab-content" style="display:none;">
+          <div class="admin-card">
+            <div class="tab-head">
+              <h2>Authority Administrators</h2>
+              <p class="sub">Manage administrator accounts assigned to university authorities.</p>
+            </div>
+            <div class="aa-stats" id="aaStats">
+              <div class="aa-stat"><div class="aa-stat-num" id="aaStatsTotalAuth">—</div><div class="aa-stat-label">Total Authorities</div></div>
+              <div class="aa-stat"><div class="aa-stat-num" id="aaStatsActive">—</div><div class="aa-stat-label">Active Authority Admins</div></div>
+              <div class="aa-stat"><div class="aa-stat-num" id="aaStatsInactive">—</div><div class="aa-stat-label">Inactive Admins</div></div>
+              <div class="aa-stat"><div class="aa-stat-num" id="aaStatsNoAdmin">—</div><div class="aa-stat-label">Authorities Without Admin</div></div>
+            </div>
+            <div class="auth-toolbar">
+              <div class="auth-toolbar-left">
+                <div class="auth-search-box">
+                  <span class="auth-search-icon">&#x1f50d;</span>
+                  <input type="text" id="aaSearchInput" placeholder="Search by name, designation, username or email..." />
+                  <button class="auth-search-clear" id="aaSearchClear" title="Clear">&times;</button>
+                </div>
+                <select id="aaStatusFilter" class="auth-filter" title="Status filter">
+                  <option value="">All Status</option>
+                  <option value="active">Active</option>
+                  <option value="inactive">Inactive</option>
+                </select>
+                <select id="aaAuthorityFilter" class="auth-filter" title="Authority filter">
+                  <option value="">All Authorities</option>
+                </select>
+              </div>
+              <div class="auth-toolbar-right">
+                <button class="btn green" id="aaAddBtn">+ Add Authority Admin</button>
+              </div>
+            </div>
+            <div id="aaLoading" class="auth-loading">Loading authority administrators...</div>
+            <div id="aaError" class="aa-error" style="display:none;"></div>
+            <div id="aaCardList" class="auth-cards"></div>
+            <div id="aaEmpty" class="auth-empty" style="display:none;">
+              <div class="auth-empty-icon">&#x1f465;</div>
+              <div class="auth-empty-text">No Authority Admins Found</div>
+              <p class="muted">Add your first Authority Admin to delegate access to the assigned authority.</p>
+              <button class="btn green" id="aaEmptyAddBtn" style="margin-top:14px;">+ Add Authority Admin</button>
             </div>
           </div>
         </div>
@@ -290,6 +531,20 @@
             </label>
             <label>Priority
               <input type="number" name="priority" min="0" max="100" value="10" />
+            </label>
+          </div>
+          <div class="auth-form-row">
+            <label>Grievance Category
+              <select name="category_id">
+                <option value="">-- Uncategorized --</option>
+              </select>
+            </label>
+            <label>Source
+              <select name="source_kind">
+                <option value="manual">Manual</option>
+                <option value="official">Official (university site)</option>
+                <option value="custom">Custom</option>
+              </select>
             </label>
           </div>
           <label>Description
@@ -366,10 +621,113 @@
     </div>
   </div>
 
+  <!-- Grievance Categories Modal -->
+  <div class="modal-overlay" id="authCatModal" style="display:none;">
+    <div class="modal-box modal-box-sm">
+      <div class="modal-header">
+        <h3>Grievance Categories</h3>
+        <button class="modal-close" id="authCatModalClose">&times;</button>
+      </div>
+      <div class="modal-body">
+        <p class="sub">Categories are DB-driven: new categories can be added here at any time without code changes.</p>
+        <div id="catAddRow" style="display:flex;gap:8px;margin:10px 0;">
+          <input type="text" id="catNewName" placeholder="Category name (e.g. Hostel & Accommodation)" style="flex:1;" />
+          <button class="btn green" id="catAddBtn">+ Add</button>
+        </div>
+        <div id="catList" class="auth-empty" style="display:none;padding:14px;">
+          <p class="muted">No categories yet. Add the first one above.</p>
+        </div>
+        <div id="catError" class="muted" style="color:#ef4444;display:none;margin-top:8px;"></div>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn ghost" id="authCatModalCancel">Close</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Authority Admin Modal -->
+  <div class="modal-overlay" id="aaModal" style="display:none;">
+    <div class="modal-box">
+      <div class="modal-header">
+        <h3 id="aaModalTitle">Add Authority Admin</h3>
+        <button class="modal-close" id="aaModalClose">&times;</button>
+      </div>
+      <form id="aaForm" class="form">
+        <div class="modal-body">
+          <div class="auth-form-row">
+            <label>Username <span class="req">*</span>
+              <input type="text" name="username" required pattern="[A-Za-z0-9_.\-]{3,32}" placeholder="e.g. registrar.admin" />
+            </label>
+            <label>Email <span class="req">*</span>
+              <input type="email" name="email" required placeholder="e.g. registrar@cusrinagar.edu.in" />
+            </label>
+          </div>
+          <div class="auth-form-row">
+            <label>Full Name
+              <input type="text" name="full_name" placeholder="e.g. Prof. Syed Wilayat Hussain Rizvi" />
+            </label>
+            <label>Designation
+              <input type="text" name="designation" placeholder="e.g. Registrar" />
+            </label>
+          </div>
+          <div class="auth-form-row">
+            <label>Assigned Authority <span class="req">*</span>
+              <select name="authority_id" id="aaAuthoritySelect" required>
+                <option value="">-- Select Authority --</option>
+              </select>
+            </label>
+            <label>Status
+              <select name="is_active">
+                <option value="true" selected>Active</option>
+                <option value="false">Inactive</option>
+              </select>
+            </label>
+          </div>
+          <div id="aaAuthPreview" class="aa-preview" style="display:none;">
+            <div class="aa-preview-title">Selected Authority</div>
+            <div class="aa-preview-grid">
+              <div><span>Authority</span><strong id="aaPrevName">—</strong></div>
+              <div><span>Designation</span><strong id="aaPrevDesignation">—</strong></div>
+              <div><span>Official Email</span><strong id="aaPrevEmail">—</strong></div>
+              <div><span>Category</span><strong id="aaPrevCategory">—</strong></div>
+            </div>
+          </div>
+          <label id="aaPasswordField">Initial Password <span class="req">*</span>
+            <input type="password" name="password" minlength="6" placeholder="Minimum 6 characters" autocomplete="new-password" />
+          </label>
+          <p class="muted" style="font-size:13px;">The password is used once at creation and never shown or returned again.</p>
+          <div id="aaFormError" class="muted" style="color:#ef4444;display:none;margin-top:8px;font-size:13px;"></div>
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn ghost" id="aaModalCancel">Cancel</button>
+          <button type="submit" class="btn green" id="aaModalSave">Save</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- Authority Admin Detail Drawer -->
+  <div class="modal-overlay" id="aaDetailModal" style="display:none;">
+    <div class="aa-drawer">
+      <div class="modal-header">
+        <h3>Authority Administrator Details</h3>
+        <button class="modal-close" id="aaDetailClose">&times;</button>
+      </div>
+      <div class="modal-body" id="aaDetailBody"></div>
+      <div class="modal-footer">
+        <button type="button" class="btn ghost" id="aaDetailReassign">Reassign Authority</button>
+        <button type="button" class="btn ghost" id="aaDetailEdit">Edit</button>
+        <button type="button" class="btn ghost danger" id="aaDetailToggle">Deactivate</button>
+        <button type="button" class="btn green" id="aaDetailCloseBtn">Close</button>
+      </div>
+    </div>
+  </div>
+
   <div class="toast-container" id="toastContainer"></div>
 
   <script src="../js/config.js?v=3"></script>
-  <script src="../js/admin.js?v=4"></script>
+  <script src="../js/admin.js?v=5"></script>
   <script src="../js/admin_insights.js?v=1"></script>
+  <script src="../js/admin_catalogue.js?v=1"></script>
 </body>
 </html>

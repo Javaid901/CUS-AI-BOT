@@ -1,0 +1,108 @@
+/* Authority Admin Portal styles — consistent with the CUS admin design system
+   (variables from admin.css / main.css). Distinct badges/layout for the portal. */
+
+/* ---------- Header / hero ---------- */
+.aa-header {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 16px;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 18px;
+}
+.aa-header h1 { font-family: var(--display); font-size: 20px; color: var(--navy); margin: 0; }
+.aa-header .sub { margin: 2px 0 0; }
+.aa-header-brand { display: flex; gap: 14px; align-items: center; }
+.aa-avatar {
+  width: 46px; height: 46px; border-radius: 12px; display: grid; place-items: center;
+  background: linear-gradient(135deg, var(--green), var(--green-700)); font-size: 22px; color: #fff;
+}
+.aa-nav { display: flex; gap: 6px; flex-wrap: wrap; }
+.aa-nav-btn {
+  border: 1px solid var(--line); background: #fff; color: var(--navy);
+  padding: 8px 14px; border-radius: 8px; cursor: pointer; font-size: 13px; font-weight: 600;
+  font-family: inherit; transition: all .15s ease;
+}
+.aa-nav-btn:hover { border-color: var(--green); color: var(--green-700); }
+.aa-nav-btn.active { background: var(--green); color: #fff; border-color: var(--green); }
+.aa-unread-pill {
+  background: #ef4444; color: #fff; border-radius: 999px; font-size: 11px;
+  padding: 1px 7px; margin-left: 6px; font-weight: 700;
+}
+.aa-loading { color: var(--muted); font-size: 13px; padding: 10px 0; }
+
+/* ---------- KPI cards ---------- */
+.aa-kpis { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 12px; }
+.aa-kpi {
+  display: flex; align-items: center; gap: 10px; padding: 14px;
+  border: 1px solid var(--line); border-radius: 10px; background: #fbfdfc;
+}
+.aa-kpi-icon { font-size: 22px; }
+.aa-kpi-n { font-size: 22px; font-weight: 700; color: var(--navy); font-family: var(--display); }
+.aa-kpi-l { font-size: 12px; color: var(--muted); }
+
+/* ---------- Filters ---------- */
+.aa-filters { display: flex; flex-wrap: wrap; gap: 10px; margin-bottom: 14px; align-items: center; }
+.aa-input {
+  padding: 8px 10px; border: 1px solid var(--line); border-radius: 8px;
+  font-size: 13px; font-family: inherit; color: var(--navy); background: #fff;
+}
+.aa-input:focus { outline: none; border-color: var(--green); }
+#gfQ { flex: 1 1 240px; min-width: 220px; }
+
+/* ---------- Badges ---------- */
+.aa-badge {
+  display: inline-block; padding: 3px 9px; border-radius: 999px;
+  font-size: 11px; font-weight: 700; letter-spacing: .2px;
+}
+.aa-badge.st-submitted { background: #e0f2fe; color: #0369a1; }
+.aa-badge.st-acknowledged { background: #fef3c7; color: #b45309; }
+.aa-badge.st-in_progress { background: #dbeafe; color: #1d4ed8; }
+.aa-badge.st-resolved { background: #d1fae5; color: #059669; }
+.aa-badge.st-closed { background: #e2e8f0; color: #475569; }
+.aa-badge.st-rejected { background: #fee2e2; color: #b91c1c; }
+.aa-badge.st-open { background: #d1fae5; color: #059669; }
+.aa-badge.rd-unread { background: #fee2e2; color: #b91c1c; }
+.aa-badge.rd-read { background: #f1f5f9; color: #64748b; }
+
+/* ---------- Pager ---------- */
+.aa-pager { display: flex; align-items: center; justify-content: flex-end; margin-top: 12px; font-size: 13px; }
+
+/* ---------- Detail ---------- */
+.aa-detail-head {
+  display: flex; flex-wrap: wrap; gap: 12px; align-items: center;
+  justify-content: space-between; margin-bottom: 14px;
+}
+.aa-detail-head h2 { font-family: var(--display); color: var(--navy); margin: 0 0 4px; font-size: 19px; }
+.aa-actions { display: flex; gap: 8px; flex-wrap: wrap; }
+.aa-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
+@media (max-width: 760px) { .aa-grid { grid-template-columns: 1fr; } }
+.aa-block { margin: 14px 0; }
+.aa-block h3 {
+  font-size: 13px; text-transform: uppercase; letter-spacing: .5px;
+  color: var(--muted); margin: 0 0 8px; font-weight: 700;
+}
+.aa-kv { width: 100%; border-collapse: collapse; font-size: 13px; }
+.aa-kv td { padding: 5px 8px 5px 0; vertical-align: top; border-bottom: 1px dashed var(--line); }
+.aa-kv td:first-child { color: var(--muted); width: 38%; font-weight: 500; }
+.aa-quote {
+  background: var(--green-50); border-left: 3px solid var(--green);
+  padding: 12px; border-radius: 6px; font-size: 13px; color: var(--navy); white-space: pre-wrap;
+}
+.aa-status-row { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
+.aa-history { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 10px; }
+.aa-history li { display: flex; gap: 10px; font-size: 13px; }
+.aa-hist-ic { width: 30px; height: 30px; border-radius: 50%; background: var(--green-50); display: grid; place-items: center; flex: 0 0 30px; font-size: 13px; }
+.aa-hist-comment { margin-top: 4px; background: #f8faf9; border: 1px solid var(--line); border-radius: 6px; padding: 8px 10px; white-space: pre-wrap; color: var(--navy); }
+.aa-response { background: #f0fdf4; border: 1px solid #bbf7d0; border-radius: 8px; padding: 12px; white-space: pre-wrap; font-size: 13px; color: var(--navy); }
+.aa-response-form textarea { width: 100%; box-sizing: border-box; }
+
+/* ---------- Profile ---------- */
+.aa-profile { margin-top: 10px; }
+
+/* Toast container (mirrors admin.css position) */
+.toast-container {
+  position: fixed; top: 16px; right: 16px; z-index: 9999;
+  display: flex; flex-direction: column; gap: 8px; max-width: 360px;
+}
+.auth-error { color: #b91c1c; font-size: 13px; margin-top: 10px; }

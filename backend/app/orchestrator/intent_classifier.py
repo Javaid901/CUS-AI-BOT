@@ -13,9 +13,12 @@ the ingest pipeline (loaded lazily, shared across requests).
 
 from __future__ import annotations
 
+import hashlib
+import json
 import logging
 import threading
 import time
+from pathlib import Path
 from typing import Any
 
 import numpy as np
@@ -34,6 +37,10 @@ _MODEL = None
 _INTENT_CENTROIDS: dict[str, np.ndarray] | None = None
 _INTENT_PARAPHRASE_EMBEDDINGS: dict[str, list[np.ndarray]] | None = None
 
+# Path used to persist precomputed centroid embeddings between processes so a
+# cold start doesn't re-embed every intent paraphrase (the largest fixed cost).
+_CENTROID_CACHE_PATH = Path(getattr(settings, "DATA_DIR", "./data")) / "intent_centroids.json"
+
 # Default confidence threshold — configurable via settings or env
 SEMANTIC_CONFIDENCE_THRESHOLD: float = 0.35
 # Higher threshold for accepting as a "broad" navigation intent
@@ -50,6 +57,52 @@ def _get_model():
                 _MODEL = SentenceTransformer("all-MiniLM-L6-v2")
                 log.info("Semantic intent classifier model loaded (all-MiniLM-L6-v2)")
     return _MODEL
+
+
+def _cache_fingerprint() -> str:
+    """Fingerprint of the current paraphrase set; invalidates stale caches."""
+    payload = {intent: sorted(paras) for intent, paras in INTENT_PARAPHRASES.items()}
+    return hashlib.sha256(json.dumps(payload, sort_keys=True).encode()).hexdigest()[:16]
+
+
+def _save_centroid_cache(centroids: dict[str, np.ndarray], para_embs: dict[str, list[np.ndarray]]) -> None:
+    """Persist computed embeddings so the next cold start skips re-embedding."""
+    try:
+        _CENTROID_CACHE_PATH.parent.mkdir(parents=True, exist_ok=True)
+        data = {
+            "fingerprint": _cache_fingerprint(),
+            "centroids": {k: v.tolist() for k, v in centroids.items()},
+            "paraphrases": {
+                k: [emb.tolist() for emb in embs]
+                for k, embs in para_embs.items()
+            },
+        }
+        _CENTROID_CACHE_PATH.write_text(json.dumps(data), encoding="utf-8")
+        log.info("Intent centroids cached to %s", _CENTROID_CACHE_PATH)
+    except Exception as exc:
+        log.warning("Intent centroid cache write failed (non-fatal): %s", exc)
+
+
+def _load_centroid_cache() -> tuple[dict[str, np.ndarray], dict[str, list[np.ndarray]]] | None:
+    """Load cached embeddings when they match the current paraphrase set."""
+    try:
+        if not _CENTROID_CACHE_PATH.exists():
+            return None
+        data = json.loads(_CENTROID_CACHE_PATH.read_text(encoding="utf-8"))
+        if data.get("fingerprint") != _cache_fingerprint():
+            return None
+        centroids = {k: np.asarray(v, dtype=np.float64) for k, v in data.get("centroids", {}).items()}
+        paras = {
+            k: [np.asarray(e, dtype=np.float64) for e in embs]
+            for k, embs in data.get("paraphrases", {}).items()
+        }
+        if not centroids:
+            return None
+        log.info("Intent centroids loaded from cache (%d intents)", len(centroids))
+        return centroids, paras
+    except Exception as exc:
+        log.warning("Intent centroid cache load failed (non-fatal): %s", exc)
+        return None
 
 
 def _compute_centroids() -> dict[str, np.ndarray]:
@@ -81,19 +134,28 @@ def _compute_paraphrase_embeddings() -> dict[str, list[np.ndarray]]:
 
 
 def _ensure_loaded():
-    """Ensure intent centroids are computed (lazy, once)."""
+    """Ensure intent centroids are computed / loaded (lazy, once)."""
     global _INTENT_CENTROIDS, _INTENT_PARAPHRASE_EMBEDDINGS
     if _INTENT_CENTROIDS is None:
         with _MODEL_LOCK:
             if _INTENT_CENTROIDS is None:
                 t0 = time.time()
-                _INTENT_CENTROIDS = _compute_centroids()
-                _INTENT_PARAPHRASE_EMBEDDINGS = _compute_paraphrase_embeddings()
-                elapsed = time.time() - t0
-                log.info(
-                    "Intent centroids computed: %d intents in %.2fs",
-                    len(_INTENT_CENTROIDS), elapsed,
-                )
+                cached = _load_centroid_cache()
+                if cached is not None:
+                    _INTENT_CENTROIDS, _INTENT_PARAPHRASE_EMBEDDINGS = cached
+                    log.info(
+                        "Intent centroids ready from cache (%d intents) in %.2fs",
+                        len(_INTENT_CENTROIDS), time.time() - t0,
+                    )
+                else:
+                    _INTENT_CENTROIDS = _compute_centroids()
+                    _INTENT_PARAPHRASE_EMBEDDINGS = _compute_paraphrase_embeddings()
+                    _save_centroid_cache(_INTENT_CENTROIDS, _INTENT_PARAPHRASE_EMBEDDINGS)
+                    elapsed = time.time() - t0
+                    log.info(
+                        "Intent centroids computed: %d intents in %.2fs",
+                        len(_INTENT_CENTROIDS), elapsed,
+                    )
 
 
 def classify(

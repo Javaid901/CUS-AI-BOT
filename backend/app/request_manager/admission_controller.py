@@ -78,14 +78,12 @@ class AdmissionController:
 
         # ---- Step 2: Check response cache (structured only) ----
         if classification.cacheable:
-            cache_hit, cached = response_cache.get_structured(
-                chat_id, classification.action
+            # Key on the message itself (never on chat_id + action alone) so a
+            # cached answer can never be served for a different question asked
+            # in the same conversation.
+            cache_hit, cached = response_cache.get_generic(
+                q=message, action=classification.action
             )
-            # Also try with message as key
-            if not cache_hit:
-                cache_hit, cached = response_cache.get_generic(
-                    q=message[:64], action=classification.action
-                )
             if cache_hit:
                 request_metrics.record_cache_hit()
                 request_metrics.record_response(0, "cache")
@@ -97,19 +95,16 @@ class AdmissionController:
         request_metrics.record_cache_miss()
 
         # ---- Step 3: Check backpressure ----
-        if backpressure.should_queue(classification.priority):
-            # Will need to go through the queue
-            pass
-
         slowdown = backpressure.should_slow_down(classification.priority)
         if slowdown:
             await asyncio.sleep(slowdown)
+        needs_queue = backpressure.should_queue(classification.priority)
 
         # ---- Step 4: Try token bucket (fast path) ----
         user_key = user_id
         has_tokens = token_bucket.consume(user_key, classification.cost)
 
-        if has_tokens and not backpressure.should_queue(classification.priority):
+        if has_tokens and not needs_queue:
             # Fast path — execute immediately
             log.debug("Fast path for user=%s action=%s", user_id[:8], classification.action)
             async for event in self._execute_with_protection(
@@ -117,6 +112,22 @@ class AdmissionController:
             ):
                 yield event
             return
+        elif not needs_queue and not has_tokens:
+            # Tokens short on the immediate path — small wait for refill, then retry once.
+            est_wait = token_bucket.wait_estimate(user_key, classification.cost)
+            if 0 < est_wait <= settings.MAX_SEMAPHORE_WAIT:
+                await asyncio.sleep(min(est_wait, 2.0))
+                if token_bucket.consume(user_key, classification.cost):
+                    async for event in self._execute_with_protection(
+                        user_id, message, chat_id, classification, t0, active_executor
+                    ):
+                        yield event
+                    return
+
+        # Any request that does not take the fast path must not keep its token
+        # debit — it is queued (or times out) and executed later.
+        if has_tokens:
+            token_bucket.refund(user_key, classification.cost)
 
         # ---- Step 5: Queue path ----
         request_metrics.record_queued()
@@ -143,6 +154,7 @@ class AdmissionController:
                 ),
             }
             yield {"type": "done", "chat_id": chat_id, "cited_chunks": []}
+            request_metrics.record_response(0, "total")
             return
 
         # Yield queue status events
@@ -154,10 +166,30 @@ class AdmissionController:
             "action": classification.action,
         }
 
-        # Wait for dequeue
-        await slot.wait()
+        # Wait for dequeue — bounded so the SSE stream can never hang forever.
+        try:
+            await asyncio.wait_for(
+                slot.wait(), timeout=max(settings.MAX_QUEUE_WAIT, 10.0)
+            )
+        except asyncio.TimeoutError:
+            await request_queue.cancel(slot.request.id)
+            yield {
+                "type": "error",
+                "message": (
+                    "Request timed out while waiting in the queue. "
+                    "Please try again."
+                ),
+            }
+            yield {"type": "done", "chat_id": chat_id, "cited_chunks": []}
+            request_metrics.record_response(0, "total")
+            return
 
         yield {"type": "processing", "action": classification.action}
+
+        # Re-debit the tokens that were refunded when this request queued
+        # (fast path debits at admission, line ~105). Without this a heavy
+        # user could queue unlimited expensive requests and never pay.
+        token_bucket.consume(user_key, classification.cost)
 
         # Execute with resource protection
         async for event in self._execute_with_protection(
@@ -199,19 +231,20 @@ class AdmissionController:
             # Execute
             if active_executor:
                 stage_t0 = time.perf_counter()
+                captured_text = ""
                 async for event in active_executor(user_id, message, chat_id):
                     yield event
+                    if event.get("type") == "token":
+                        captured_text += event.get("text") or ""
+                    elif event.get("type") in ("detail", "options") and event.get("message"):
+                        captured_text = event["message"]
+                    elif event.get("type") == "done" and classification.cacheable and captured_text:
+                        response_cache.set_generic(
+                            captured_text, ttl=classification.cache_ttl,
+                            q=message, action=classification.action,
+                        )
                 elapsed_ms = int((time.perf_counter() - stage_t0) * 1000)
                 request_metrics.record_response(elapsed_ms, classification.action)
-
-                # Cache structured responses
-                if classification.cacheable and event.get("type") == "done":
-                    text = event.get("text") or ""
-                    if text:
-                        response_cache.set_generic(
-                            text, ttl=classification.cache_ttl,
-                            q=message[:64], action=classification.action
-                        )
             else:
                 yield {"type": "error", "message": "No executor configured"}
                 yield {"type": "done", "chat_id": chat_id, "cited_chunks": []}

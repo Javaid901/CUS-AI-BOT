@@ -11,20 +11,38 @@ Planner output (Plan):
   reason:   human-readable explanation
 
 Decision rules (applied in order):
-  1. Reset signal → welcome
-  2. Service keyword → connector
-  3. Auth flow in progress → continue auth
-  4. Known option selection → navigation
-  5. Broad keyword → navigation
-  6. Programme + topic + structured data exists → structured
-  7. Programme + topic + no structured data → rag
-  8. Programme + follow-up question → rag
-  9. Programme switch detected → navigation (show new programme)
-  10. Level + topic → structured if possible else rag
-  11. Broad question (what/why/how) with context → rag
-  12. Broad question without context → navigation (welcome)
-  13. Short ambiguous → clarify
-  14. Everything else → rag
+   1. Reset signal → welcome
+   2. Back → previous nav path
+   3. Service keyword → connector
+   3a. News / website knowledge intent → news (notices, circulars,
+       notifications, calendar, announcements — NEVER a dead-end menu)
+   3b. Academic catalogue request (data-gated) → catalogue
+   3c. Authority / office intent → authority (registrar, exam wing, "who
+       handles exams" — checked before slot-fill can swallow them)
+   4. Bare programme name (word count <= 2) → structured programme details
+   5. Active programme context + topic → structured if data exists
+   5b. Programme + topic in the SAME message → direct answer (structured/rag)
+   6. College context + topic → college-specific data (structured/rag)
+   7. Active college + short follow-up → college-specific response
+   8. Active college + programme selection → college programme details
+   9a. Course ↔ college discovery queries → navigation options
+   9b. College + programme + topic → structured if data exists
+   9. Known option selection (button click) → navigation
+   10b. Topic WITHOUT programme (and no context) → slot-fill question (which programme?)
+   10. Broad keyword / semantic intent → navigation (browse fallback)
+   11. Programme + topic + no structured data → rag
+   12. Programme switch detected → structured / rag / navigation
+   13. Active programme + short follow-up → rag
+   14. Broad question with programme context → rag
+   15. Authority / escalation intent → authority (non-question forms)
+   16. Broad question without context → rag
+   17. Short ambiguous → clarify
+   18. Everything else → rag
+
+Slot-fill: when a concrete topic (fee, eligibility, duration, ...) is requested
+without a programme, the assistant asks a single targeted question for the missing
+slot instead of falling back to browse buttons. The answer continues the original
+request without restarting the conversation.
 
 The planner is entirely rule-based (no LLM calls) for speed.
 """
@@ -87,6 +105,43 @@ def plan(
     chat_id: str,
     entities: Any,  # ExtractedEntities
 ) -> Plan:
+    """Public plan() — decides the execution path AND attaches the canonical
+    query contract (see app.orchestrator.contract) to the plan.
+
+    The contract is the single representation of what the user wants; the
+    engine persists it on state so later turns inherit resolved fields.
+    """
+    result = _plan_inner(message, ctx, chat_id, entities)
+    try:
+        from app.orchestrator.contract import build_contract
+
+        catalogue_req = None
+        if result.action == "catalogue":
+            catalogue_req = (result.extra or {}).get("req")
+        semantic_intent = (result.extra or {}).get("semantic_intent")
+        semantic_conf = float((result.extra or {}).get("semantic_confidence") or 0.0)
+        contract = build_contract(
+            message,
+            entities,
+            ctx=ctx,
+            semantic_intent=semantic_intent,
+            semantic_confidence=semantic_conf,
+            catalogue_req=catalogue_req,
+            plan_action=result.action,
+            plan_target=result.target,
+        )
+        result.extra["contract"] = contract.as_dict()
+    except Exception:
+        pass  # a contract must never break planning
+    return result
+
+
+def _plan_inner(
+    message: str,
+    ctx: ConversationContext,
+    chat_id: str,
+    entities: Any,  # ExtractedEntities
+) -> Plan:
     """Decide the optimal execution path for a user message.
 
     Args:
@@ -101,6 +156,37 @@ def plan(
     text = message.strip().lower()
     clean = text.rstrip("?.,!;:")
     e = entities
+
+    # ---- Stage 0-pre: Raw-message intent (greeting / grievance) ----
+    # These checks run on the RAW message, BEFORE query understanding. The
+    # preprocessing pass rewrites short utterances via a fuzzy dictionary and
+    # must never be allowed to mangle intent markers ("good morning" ->
+    # "govt joining", "mera fee refund" -> "ma fee"). A pure greeting opens
+    # the welcome menu; a complaint routes to the grievance intake composer.
+    greeting_kind = _detect_greeting(text)
+    if greeting_kind:
+        return Plan(
+            action="greeting",
+            confidence=0.95,
+            reason=f"{greeting_kind} detected",
+            extra={"kind": greeting_kind},
+        )
+    try:
+        from app.grievance.detect import detect_grievance
+        det = detect_grievance(text)
+        if det["is_grievance"]:
+            return Plan(
+                action="grievance",
+                confidence=0.9,
+                reason=f"Grievance intent detected ({det['reason']})",
+                extra={
+                    "category": det["category"],
+                    "marker": det["marker"],
+                    "query": message.strip(),
+                },
+            )
+    except Exception:
+        pass  # detector failures never break the normal flow
 
     # ---- Stage 0: Query Understanding preprocessing ----
     # Lightweight normalization, spelling correction, alias expansion.
@@ -121,26 +207,54 @@ def plan(
     # ---- Stage 0b: Semantic intent classification ----
     # Run semantic intent classifier for debugging and enhanced routing.
     # This runs silently; if it fails, we continue with the existing rules.
+    #
+    # Skip entirely when the message IS a known navigation label (option id,
+    # domain keyword, bare level). These are resolved deterministically and
+    # the embedding model only ever distracts (and costs 20-100ms per call).
     _semantic_intent = None
     _semantic_confidence = 0.0
     _semantic_debug = {}
-    try:
-        from app.orchestrator.intent_classifier import classify as classify_semantic
-        _semantic_intent, _semantic_confidence, _semantic_debug = classify_semantic(text)
-    except Exception:
-        pass
+    if not _is_semantic_skippable(text):
+        try:
+            from app.orchestrator.intent_classifier import classify as classify_semantic
+            _semantic_intent, _semantic_confidence, _semantic_debug = classify_semantic(text)
+        except Exception:
+            pass
 
     # ---- Stage 0c: Semantic topic enrichment ----
     # If entity extraction didn't find a topic but semantic classifier
     # strongly suggests one, use it. This enables follow-ups like
     # "Cost?" / "How much?" to resolve to "fee" within programme context.
+    #
+    # CRITICAL GUARD: enrichment is disabled whenever the message is its own
+    # navigation label (a bot-rendered option id, a bare programme name, a
+    # bare level keyword like "ug"/"undergraduate", or a domain keyword).
+    # Otherwise the embedding model warps terse labels into a lookalike topic
+    # ("ug" -> "results", "BCA" -> "eligibility", "phd" -> "authorities"),
+    # which hijacks deterministic option selection and opens the wrong
+    # workflow.
     _semantic_topic_map = {
         "fee": "fee", "eligibility": "eligibility", "scholarships": "fee",
         "datesheet": "dates", "examination": "examination",
         "results": "results", "contact": "contact",
     }
-    if e.topic is None and _semantic_intent in _semantic_topic_map:
+    if e.topic is None and _semantic_intent in _semantic_topic_map and _semantic_enrichment_allowed(text, e):
         e.topic = _semantic_topic_map[_semantic_intent]
+
+    # ---- Stage 0d: Academic scheme awareness ----
+    # If the user mentions an academic scheme (NEP 2020 / CBCS), record it
+    # in conversation context so routing and RAG can use it. Persists until
+    # the user changes it explicitly.
+    if e.scheme and ctx.academic_scheme != e.scheme:
+        ctx.academic_scheme = e.scheme
+
+    # ---- Stage 0e: Semester awareness ----
+    # Numeric semester references ("4th semester") are folded into context so
+    # RAG and service routing can be semester-aware. Relative words
+    # ("next semester") are resolved in the engine where the student record
+    # is available.
+    if e.semester is not None and ctx.semester != str(e.semester):
+        ctx.semester = str(e.semester)
 
     # ---- Rule 1: Reset signal ----
     if e.is_reset:
@@ -152,23 +266,146 @@ def plan(
 
     # ---- Rule 2: Back ----
     if e.is_back:
-        path = get_nav_path(chat_id)
-        if path:
+        response = get_selection_response(chat_id, "back")
+        if response.get("type") in ("options", "detail"):
             return Plan(
                 action="navigation",
+                response=response,
                 confidence=1.0,
                 reason="User clicked back",
             )
         return Plan(action="welcome", confidence=1.0, reason="No nav path to go back from")
 
-    # ---- Rule 3: Service keyword ----
-    if e.service:
+    # ---- Rule 3: Authority / office intent ----
+    # Explicit office questions ("who is registrar", "who handles exams",
+    # "registrar office contact") route to the authority card BEFORE the
+    # service-keyword rule, so office nouns are never hijacked into the
+    # portal flow ("who should I contact about my result" -> authority,
+    # not the results connector).
+    authority_matches = _detect_authority_intent(text)
+    if authority_matches:
         return Plan(
-            action="connector",
-            target=e.service,
-            confidence=0.95,
-            reason=f"Service keyword detected: {e.service}",
+            action="authority",
+            target=authority_matches[0].get("department_name", ""),
+            confidence=0.85,
+            reason=f"Authority intent detected: {authority_matches[0].get('authority_name', '')}",
+            extra={"authorities": authority_matches, "original_query": text},
         )
+
+    # ---- Rule 3a: Service keyword ----
+    # Questions ABOUT a service as a topic ("what is course registration?",
+    # "when will results be announced?") are informational — the catalogue /
+    # RAG pipeline answers them. Only actual requests (action verbs,
+    # possession, bare mentions) enter the student-service flow.
+    if e.service:
+        from app.orchestrator.extractor import is_informational_question
+        if not is_informational_question(text):
+            return Plan(
+                action="connector",
+                target=e.service,
+                confidence=0.95,
+                reason=f"Service keyword detected: {e.service}",
+            )
+
+    # ---- Rule 3c: Programme comparison (2+ programmes in one message) ----
+    # "difference between BBA and BCA", "BBA vs MCA fee" — must run BEFORE the
+    # single-programme catalogue rules so both targets survive. Structured
+    # side-by-side data is rendered when both exist in the catalogue; the
+    # engine falls back to scoped knowledge retrieval otherwise.
+    if len(getattr(e, "programmes", None) or []) >= 2 and not is_college_reference(text):
+        _comparison_topic = e.topic
+        if _comparison_topic is None:
+            try:
+                from app.catalogue.detect import detect_catalogue_aspect
+                _comparison_topic = detect_catalogue_aspect(text)
+            except Exception:
+                _comparison_topic = None
+        ctx.programmes = list(e.programmes)
+        ctx.programme = e.programmes[0]
+        ctx.programme_id = e.programmes[0]
+        _derive_level_for(ctx, e.programmes[0])
+        return Plan(
+            action="comparison",
+            target="+".join(e.programmes),
+            confidence=0.9,
+            reason=f"Programme comparison: {' vs '.join(e.programmes)}",
+            extra={"programmes": list(e.programmes), "topic": _comparison_topic},
+        )
+
+    # ---- Rule 3b: Academic catalogue (NEP) ----
+    # Structured catalogue data (programmes, subjects, VAC/SEC/AEC, credits,
+    # outcomes, curriculum docs) takes priority over generic RAG. Detection is
+    # strictly data-gated: no matching catalogue records -> None -> the
+    # existing pipeline handles the message unchanged.
+    try:
+        from app.catalogue.detect import detect_catalogue_request, programme_overview_request
+        catalogue_req = detect_catalogue_request(text, ctx, e)
+        if catalogue_req:
+            # Remember the resolved programme on context so conversational
+            # follow-ups ("how much?" / "and subjects?") re-use it without the
+            # user repeating the programme name.
+            _pid = catalogue_req.get("programme")
+            if _pid:
+                try:
+                    from app.catalogue.service import programme_by_id
+                    _prog = programme_by_id(_pid)
+                    if _prog:
+                        _code = str(_prog.get("code") or "").lower()
+                        if _code:
+                            ctx.catalogue_programme_code = _code
+                            ctx.programme = _code
+                            ctx.programme_id = _code
+                except Exception:
+                    pass
+            return Plan(
+                action="catalogue",
+                target=catalogue_req.get("op"),
+                confidence=0.97,
+                reason=f"Catalogue route: {catalogue_req.get('op')}",
+                extra={"req": catalogue_req},
+            )
+        # Bare programme name (word count <= 2): prefer the catalogue overview
+        # when the programme exists in the catalogue, else the legacy flow.
+        if e.word_count <= 2 and e.programme and not e.topic:
+            overview_req = programme_overview_request(e.programme)
+            if overview_req:
+                try:
+                    from app.catalogue.service import programme_by_id
+                    _prog = programme_by_id(overview_req.get("programme"))
+                    if _prog:
+                        _code = str(_prog.get("code") or "").lower()
+                        if _code:
+                            ctx.catalogue_programme_code = _code
+                            ctx.programme = _code
+                            ctx.programme_id = _code
+                except Exception:
+                    pass
+                return Plan(
+                    action="catalogue",
+                    target="overview",
+                    confidence=0.96,
+                    reason=f"Catalogue overview for: {e.programme}",
+                    extra={"req": overview_req},
+                )
+    except Exception:
+        pass
+
+    # ---- Rule 3b: News / website knowledge intent ----
+    # Current notices, circulars, notifications and the academic calendar
+    # live in the synced website knowledge base. Answer from retrieved /
+    # summarised knowledge — never show a dead-end menu or a slot-fill loop.
+    # Bare navigation labels ("notices" clicked as an option) stay with the
+    # existing button flow (Rule 9).
+    if not (e.word_count <= 1 and is_option_selection(text)):
+        news_query = _detect_news_intent(text)
+        if news_query:
+            return Plan(
+                action="news",
+                target=news_query,
+                confidence=0.88,
+                reason=f"News / website knowledge intent: {news_query}",
+                extra={"is_news": True, "original_query": text},
+            )
 
     # ---- Rule 4: Bare programme name (programme switch without topic) ----
     # Detect when user types just a programme name like "MBA" or "BCA"
@@ -194,8 +431,9 @@ def plan(
 
     # ---- Rule 5: Programme + topic with structured data (MUST come before option selection) ----
     # When context has an active programme and message is a known topic,
-    # structured lookup takes priority over navigation.
-    if ctx.programme and e.topic:
+    # structured lookup takes priority over navigation. Skipped when the message
+    # names a DIFFERENT programme — that is a switch handled by Rule 5b/12.
+    if ctx.programme and e.topic and not (e.programme and e.programme != ctx.programme):
         value = lookup_field(ctx.programme, e.topic)
         if value:
             detail = lookup_programme(ctx.programme)
@@ -214,6 +452,42 @@ def plan(
                 confidence=0.98,
                 reason=f"Structured field lookup: {ctx.programme}/{e.topic}",
                 )
+
+    # ---- Rule 5b: Programme + topic in the SAME message → direct answer ----
+    # Conversational assistant: when a single message carries both the programme
+    # and the topic, answer directly instead of showing navigation buttons.
+    # (e.g. "Fee structure of BCA", "What is the eligibility for B.Sc Computer
+    # Science?"). Also persists the programme into conversation memory so
+    # follow-ups ("what about the fee?") resolve to the same programme.
+    if e.programme and e.topic and not is_college_reference(text):
+        ctx.programme = e.programme
+        ctx.programme_id = e.programme
+        _derive_level_for(ctx, e.programme)
+        value = lookup_field(e.programme, e.topic)
+        if value:
+            detail = lookup_programme(e.programme)
+            title = detail.get("title", e.programme.upper()) if detail else e.programme.upper()
+            fields = _build_topic_fields(e.topic, value, e.programme)
+            return Plan(
+                action="structured",
+                response={
+                    "type": "detail",
+                    "title": f"{title} — {e.topic.replace('_', ' ').title()}",
+                    "fields": fields,
+                    "actions": _build_actions(e.programme, e.topic),
+                    "context": _build_context_dict(ctx),
+                },
+                target=f"{e.programme}/{e.topic}",
+                confidence=0.98,
+                reason=f"Programme + topic direct answer: {e.programme}/{e.topic}",
+            )
+        return Plan(
+            action="rag",
+            target=_augment_for_rag_from_prog(e.programme, e.topic),
+            confidence=0.85,
+            reason=f"Programme + topic (no structured data): {e.programme}/{e.topic}",
+            extra={"original_query": text, "augmented_query": _augment_for_rag_from_prog(e.programme, e.topic)},
+        )
 
     # ---- Rule 6: College context pre-check (before option selection) ----
     # College rules must come before option selection / broad keywords so that
@@ -680,7 +954,11 @@ def plan(
                 )
 
     # ---- Rule 9: Option selection (known ID) ----
-    if is_option_selection(text):
+    # A bare concrete topic keyword ("fee", "eligibility") without any
+    # programme is a conversational ask, not a button click: let Rule 10b
+    # slot-fill the missing programme instead of opening browse options.
+    _bare_topic_ask = e.topic and not e.programme and not ctx.programme and e.word_count <= 2
+    if is_option_selection(text) and not _bare_topic_ask:
         response = get_selection_response(chat_id, text)
         if response.get("type") in ("options", "detail"):
             return Plan(
@@ -689,6 +967,43 @@ def plan(
                 confidence=0.95,
                 reason=f"Option selection: {text}",
             )
+
+    # ---- Rule 9b: Bare level keyword → level navigation ----
+    # The extractor already recognises "undergraduate", "pg", "phd", etc. as a
+    # level entity, but the planner never used it — so these messages fell into
+    # the semantic classifier, which warps them into unrelated categories
+    # ("ug" -> "results", "undergraduate" -> "colleges"). Route a bare level
+    # keyword to its own navigation response deterministically.
+    if (
+        e.level is not None
+        and not e.programme
+        and not e.topic
+        and e.word_count <= 2
+        and not ctx.college
+    ):
+        level_response = get_broad_response(e.level)
+        if level_response.get("type") in ("options", "detail"):
+            return Plan(
+                action="navigation",
+                response=level_response,
+                target=e.level,
+                confidence=0.92,
+                reason=f"Level keyword: {e.level}",
+            )
+
+    # ---- Rule 10b: Topic without programme → targeted slot-fill question ----
+    # A concrete topic (fee, eligibility, duration, documents, ...) with no
+    # programme anywhere (message, context, domain, college) can't be answered
+    # directly. Instead of browse buttons, ask the single missing slot and
+    # remember the pending topic so the next message continues the request.
+    if e.topic and not e.programme and not ctx.programme and not ctx.college and not ctx.domain:
+        return Plan(
+            action="slot_fill",
+            target="programme",
+            confidence=0.88,
+            reason=f"Topic '{e.topic}' without programme — targeted slot question",
+            extra={"slot": "programme", "pending_topic": e.topic},
+        )
 
     # ---- Rule 10: Broad keyword / semantic intent ----
     intent_type, category = classify_nav(text)
@@ -709,7 +1024,8 @@ def plan(
             )
 
     # ---- Rule 11: Programme + topic without structured data → RAG ----
-    if ctx.programme and e.topic:
+    # Skipped when the message names a different programme (switch → Rule 5b/12).
+    if ctx.programme and e.topic and not (e.programme and e.programme != ctx.programme):
         # No structured data found, try RAG
         augmented = _augment_for_rag(ctx, e.topic)
         return Plan(
@@ -796,18 +1112,7 @@ def plan(
             extra={"original_query": text, "augmented_query": augmented},
         )
 
-    # ---- Rule 16: Authority / escalation intent ----
-    authority_matches = _detect_authority_intent(text)
-    if authority_matches:
-        return Plan(
-            action="authority",
-            target=authority_matches[0].get("department_name", ""),
-            confidence=0.7,
-            reason=f"Authority intent detected: {authority_matches[0].get('authority_name', '')}",
-            extra={"authorities": authority_matches, "original_query": text},
-        )
-
-    # ---- Rule 17: Broad question without context → RAG ----
+    # ---- Rule 16: Broad question without context → RAG ----
     if e.is_question and not ctx.domain:
         return Plan(
             action="rag",
@@ -816,7 +1121,7 @@ def plan(
             reason=f"Question without context, using RAG: {text}",
         )
 
-    # ---- Rule 18: Short ambiguous → clarify ----
+    # ---- Rule 17: Short ambiguous → clarify ----
     if e.word_count <= 3 and not ctx.domain:
         # See if it matches any domain
         return Plan(
@@ -826,7 +1131,7 @@ def plan(
             reason=f"Short ambiguous message: '{text}'",
         )
 
-    # ---- Rule 19: Everything else → RAG ----
+    # ---- Rule 18: Everything else → RAG ----
     augmented = _augment_for_rag(ctx, text) if ctx.programme else text
     extra = {"original_query": text, "augmented_query": augmented}
     if _semantic_intent and _semantic_intent != "unknown":
@@ -844,6 +1149,53 @@ def plan(
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
+
+
+_KNOWN_UG_PROGRAMMES = {"ba", "bsc", "bcom", "bba", "bca", "btech", "bed"}
+_KNOWN_PG_PROGRAMMES = {"ma", "msc", "mcom", "mba", "mca", "med"}
+
+
+def _derive_level_for(ctx: ConversationContext, programme: str) -> None:
+    """Derive the academic level (ug/pg/phd) from a programme ID."""
+    if programme in _KNOWN_UG_PROGRAMMES:
+        ctx.level = "ug"
+    elif programme in _KNOWN_PG_PROGRAMMES:
+        ctx.level = "pg"
+    elif programme == "phd":
+        ctx.level = "phd"
+
+
+# Labels that are resolved deterministically — the semantic classifier must
+# never run for them (it misclassifies terse tokens: "ug" -> results, "phd" ->
+# authorities) and skipping it saves an embedding call on every nav click.
+_NAV_LABEL_TOKENS = DOMAIN_KEYWORDS | {
+    "undergraduate", "under graduate", "postgraduate", "post graduate",
+    "doctorate", "design your degree",
+}
+
+
+def _is_semantic_skippable(text: str) -> bool:
+    """True when a message is its own navigation label (no semantic needed)."""
+    clean = text.strip().lower().rstrip("?.,!;:")
+    return clean in _NAV_LABEL_TOKENS or is_option_selection(text)
+
+
+def _semantic_enrichment_allowed(text: str, e: Any) -> bool:
+    """Whether the semantic classifier may inject a topic into this message.
+
+    Disabled whenever the message is itself a resolved navigation label
+    (a known option id, a bare programme, a bare level keyword, a domain
+    keyword, or an existing explicit service). These tokens are ground truth
+    and must route deterministically, not through embedding similarity.
+    """
+    if e.programme or e.level or e.service:
+        return False
+    if is_option_selection(text):
+        return False
+    clean = text.strip().lower().rstrip("?.,!;:")
+    if clean in DOMAIN_KEYWORDS:
+        return False
+    return True
 
 
 def _is_short_followup(text: str, entities: Any) -> bool:
@@ -905,6 +1257,10 @@ def _build_context_dict(ctx: ConversationContext) -> dict[str, Any]:
         label = _get_programme_label(ctx.programme) or ctx.programme.upper()
         crumbs.append(label)
     result = {"programme": ctx.programme}
+    if ctx.academic_scheme:
+        from app.orchestrator.context import scheme_label
+        crumbs.append(scheme_label(ctx.academic_scheme) or ctx.academic_scheme.upper())
+        result["academic_scheme"] = ctx.academic_scheme
     if crumbs:
         result["breadcrumbs"] = crumbs
     return result
@@ -1017,26 +1373,182 @@ def _detect_course_college_query(text: str, ctx: ConversationContext) -> dict | 
     return None
 
 
+_GREETING_WORDS = frozenset({
+    "hi", "hello", "hey", "hii", "hiii", "hiya", "yo", "there", "bot",
+    "salam", "salaam", "assalam", "assalamualaikum", "assalamu", "alaikum",
+    "namaste", "namaskar", "adaab", "ji",
+    "good", "morning", "afternoon", "evening", "day",
+    "how", "are", "you", "r", "u", "kaise", "ho", "kya", "haal",
+})
+
+_GREETING_EXACT = {
+    "hi": "greeting", "hello": "greeting", "hey": "greeting",
+    "hello there": "greeting", "hi there": "greeting", "hi bot": "greeting",
+    "hello ji": "greeting",
+    "assalamualaikum": "greeting", "assalamu alaikum": "greeting",
+    "salam": "greeting", "salaam": "greeting",
+    "namaste": "greeting", "namaskar": "greeting", "adaab": "greeting",
+    "good morning": "greeting", "good afternoon": "greeting",
+    "good evening": "greeting", "good day": "greeting",
+    "how are you": "greeting", "how r u": "greeting", "how are u": "greeting",
+    "kaise ho": "greeting", "kya haal hai": "greeting",
+    "thank you": "courtesy", "thanks": "courtesy", "thanku": "courtesy",
+    "thank u": "courtesy", "thx": "courtesy", "thankyou": "courtesy",
+    "shukriya": "courtesy", "dhanyavad": "courtesy",
+}
+
+
+def _detect_greeting(text: str) -> str | None:
+    """Return 'greeting' | 'courtesy' | None for pure greeting messages.
+
+    Only messages made ENTIRELY of greeting/courtesy words (max 4 tokens)
+    qualify, so mixed messages ("hello, what is the MCA fee?") keep flowing
+    through the normal pipeline.
+    """
+    t = text.strip().lower().rstrip("!?.,;: ")
+    t = re.sub(r"\s+", " ", t)
+    if not t or len(t) > 40:
+        return None
+    if t in _GREETING_EXACT:
+        return _GREETING_EXACT[t]
+    words = t.split()
+    if len(words) <= 4 and all(w in _GREETING_WORDS for w in words):
+        return "greeting"
+    return None
+
+
 def _detect_authority_intent(message: str) -> list[dict]:
     """Check if the user is asking about a university office or requesting human contact.
 
-    Only triggers when there is a strong match (score > 2.0) or an explicit escalation
-    intent pattern. This prevents broad keyword overlap from stealing RAG queries.
+    Triggers when:
+      - a strong keyword-overlap match exists (score > 2.0), or
+      - an explicit escalation pattern fires (score >= 0.7), or
+      - the message asks an office question ("who is registrar", "who handles
+        exams") that resolves to a known department via the alias maps.
+    This prevents broad keyword overlap from stealing RAG queries while still
+    catching thin-but-explicit office questions before slot-fill can.
     """
-    from app.authority.matcher import detect_escalation_intent, find_authority
+    from app.authority.matcher import (
+        DEPARTMENT_ALIASES as _AUTHORITY_DEPT_ALIASES,
+    )
+    from app.authority.matcher import (
+        SERVICE_ROUTES as _AUTHORITY_SERVICE_ROUTES,
+    )
+    from app.authority.matcher import (
+        detect_escalation_intent,
+        find_authority,
+    )
     try:
-        # Only accept authority matches with high confidence
+        # Only accept authority matches with high confidence AND explicit
+        # authority evidence in the message (office question markers or
+        # office nouns). Keyword-overlap alone is too noisy ("documents
+        # required for admission" must not become an Admissions contact card).
         matches = find_authority(message, top_k=3)
         strong_matches = [m for m in matches if m.get("_match_score", 0) >= 2.0]
-        if strong_matches:
+        if strong_matches and _has_authority_evidence(message):
             return strong_matches
         # Escalation intent requires explicit human contact patterns
-        esc_conf = detect_escalation_intent(message)
-        if esc_conf >= 0.7:
+        if detect_escalation_intent(message) >= 0.7:
             matches = find_authority(message, top_k=2)
             strong_matches = [m for m in matches if m.get("_match_score", 0) >= 2.0]
-            if strong_matches:
+            if strong_matches and _has_authority_evidence(message):
                 return strong_matches
+        # Explicit office question → direct department routing
+        if _is_authority_question(message):
+            low = message.strip().lower()
+            for alias, dept in {**_AUTHORITY_DEPT_ALIASES, **_AUTHORITY_SERVICE_ROUTES}.items():
+                if re.search(r"\b" + re.escape(alias) + r"\b", low):
+                    row = _authority_by_department(dept)
+                    if row:
+                        return [row]
     except Exception:
         pass
     return []
+
+
+_AUTHORITY_QUESTION_MARKERS = (
+    "who", "whose", "whom",
+    "handles", "handling", "deals", "dealing", "manages", "managing",
+    "oversees", "supervises",
+    "in charge", "in-charge",
+    "office", "offices", "officer", "officers",
+    "contact", "speak to", "talk to",
+    "department", "wing", "cell",
+)
+
+
+def _is_authority_question(message: str) -> bool:
+    """True when the message reads as an explicit office question.
+
+    Markers are intentionally narrow: they require an explicit authority
+    posture (who / in charge / office / deals with ...) so genuine student
+    services ("my results", "admission fee") are never captured.
+    """
+    low = message.strip().lower()
+    return any(m in low for m in _AUTHORITY_QUESTION_MARKERS)
+
+
+# Office nouns that themselves signal an authority query even without a
+# question marker ("registrar", "controller of examinations", ...).
+_AUTHORITY_NOUNS = (
+    "registrar", "registrars", "chancellor", "chancellors", "vice chancellor",
+    "vice-chancellor", "controller", "coe", "dean", "deans", "warden",
+    "librarian", "principal", "director", "secretary", "in charge",
+    "in-charge", "authority", "authorities", "helpline",
+)
+
+
+def _has_authority_evidence(message: str) -> bool:
+    """True when an authority match is backed by explicit office evidence.
+
+    Gates the keyword-overlap score path: a high score alone is not enough
+    ("admission requirements" frequently overlaps an Admissions office's
+    keyword pool). The message must read as an office request.
+    """
+    if _is_authority_question(message):
+        return True
+    low = message.strip().lower()
+    return any(n in low for n in _AUTHORITY_NOUNS)
+
+
+def _authority_by_department(department_name: str) -> dict | None:
+    """Return the first cached authority for an exact department name."""
+    from app.authority.service import authority_service
+    low = str(department_name).lower()
+    for row in authority_service.list_active():
+        if str(row.get("department_name") or "").lower() == low:
+            return row
+    return None
+
+
+# ---------------------------------------------------------------------------
+# News / website knowledge
+# ---------------------------------------------------------------------------
+
+# Nouns that mark a current-information / website-knowledge query. A single
+# noun is enough ("circular"), but pure navigation labels are excluded at the
+# call site so the existing option-button flow keeps working.
+_NEWS_NOUNS = (
+    "notice", "notices", "notification", "notifications", "circular",
+    "circulars", "calendar", "calendars", "announcement", "announcements",
+    "news", "newsletter", "newsletters", "bulletin", "bulletins",
+    "holiday", "holidays", "closure", "re-opening", "reopening",
+    "update", "updates",
+)
+
+
+def _detect_news_intent(text: str) -> str | None:
+    """Detect website-knowledge / news queries (current notices & circulars).
+
+    Returns a news-scoped retrieval query, or None when the message is not
+    a news query. The returned query keeps the user's wording and appends
+    the news vocabulary so the retriever surfaces synced notice documents.
+    """
+    low = text.strip().lower()
+    if not any(n in low for n in _NEWS_NOUNS):
+        return None
+    parts = [low]
+    for kw in ("notices", "circulars", "notifications", "announcements"):
+        if kw not in low:
+            parts.append(kw)
+    return " ".join(parts) if len(parts) > 1 else low

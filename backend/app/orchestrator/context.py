@@ -78,13 +78,32 @@ CONTEXT_TOPICS: dict[str, str] = {
     "how many years": "duration",
     "admission mode": "admission_mode",
     "admission process": "admission_mode",
+    "admission procedure": "admission_mode",
     "how to apply": "admission_mode",
+    "how to get admission": "admission_mode",
+    "admission requirements": "eligibility",
+    "admission requirement": "eligibility",
+    "eligibility criteria": "eligibility",
+    "requirements": "eligibility",
+    "requirement": "eligibility",
+    "admission criteria": "eligibility",
+    "criteria": "eligibility",
+    "cost": "fee",
+    "costs": "fee",
+    "how much": "fee",
+    "tuition fee": "fee",
+    "tuition": "fee",
     "documents": "documents",
     "documents required": "documents",
     "required documents": "documents",
     "specializations": "specializations",
     "subjects": "specializations",
+    "subjects offered": "specializations",
+    "subject": "specializations",
+    "papers": "specializations",
+    "modules": "specializations",
     "syllabus": "syllabus",
+    "curriculum": "syllabus",
     "dates": "dates",
     "important dates": "dates",
     "prospectus": "prospectus",
@@ -94,6 +113,17 @@ CONTEXT_TOPICS: dict[str, str] = {
     "placements": "placement",
     "career": "career",
     "career options": "career",
+    "enrollment": "admission_mode",
+    "enrolment": "admission_mode",
+    "attendance": "attendance",
+    "presence": "attendance",
+    "attendance percentage": "attendance",
+    "results": "results",
+    "result": "results",
+    "grades": "results",
+    "marks": "results",
+    "sgpa": "results",
+    "cgpa": "results",
 }
 
 _CONTEXT_TOPIC_PATTERN = re.compile(
@@ -123,7 +153,9 @@ class ConversationContext:
     level: str | None = None
     programme: str | None = None
     programme_id: str | None = None
+    programmes: list[str] = field(default_factory=list)  # comparison targets (2+) from the last query
     semester: str | None = None
+    academic_scheme: str | None = None  # "cbcs" | "nep" | "nep2020" — persists across the conversation
     department: str | None = None
     topic: str | None = None
     last_document: str | None = None
@@ -148,6 +180,35 @@ class ConversationContext:
     service_params: dict[str, str] = field(default_factory=dict)  # collected params (programme, semester, etc.)
     service_session: str | None = None    # opaque session token, NEVER a password
 
+    # Student session (authenticated portal) — managed by student_session.py.
+    # Mirrors the spec's portal session: authenticated, student_id, name (via
+    # state.student_name), programme (state.student_programme), college,
+    # academic_scheme, batch, semester_list, current_semester, timestamps.
+    authenticated: bool = False
+    student_id: str | None = None          # Student row UUID
+    student_college: str | None = None     # college display name for the student
+    student_batch: str | None = None       # e.g. "2023-2026"
+    student_session_token: str | None = None  # opaque; destroyed on logout/expiry
+    student_login_timestamp: float | None = None
+    student_session_expiry: float | None = None
+    semester_list: list[int] = field(default_factory=list)   # dynamic, backend-driven
+    current_semester: int | None = None    # remembered semester (defaults to student's current)
+
+    # Academic catalogue context (NEP catalogue module)
+    catalogue_programme_id: str | None = None     # Programme row UUID
+    catalogue_programme_code: str | None = None   # display code, e.g. "BCA"
+    catalogue_scheme: str | None = None           # AcademicScheme row UUID
+    catalogue_scheme_code: str | None = None      # e.g. "nep2020" | "traditional"
+    catalogue_scheme_name: str | None = None      # display name, e.g. "NEP 2020 Curriculum"
+    catalogue_level: str | None = None            # ug | pg | phd | integrated
+    catalogue_minor: str | None = None            # selected minor discipline name
+    catalogue_category: str | None = None         # major | minor | vac | sec | aec | generic
+    catalogue_semester: int | None = None         # selected semester
+
+    # Last canonical query contract (serialized) — lets later turns inherit
+    # resolved fields (e.g. catalogue programme row UUID) without re-resolving.
+    _last_contract: dict[str, Any] | None = None
+
 
 def needs_clarification(ctx: ConversationContext) -> str | None:
     """Return the field that needs clarification, or None.
@@ -158,6 +219,66 @@ def needs_clarification(ctx: ConversationContext) -> str | None:
     if ctx.pending_clarification:
         return ctx.clarification_field
     return None
+
+
+# ---------------------------------------------------------------------------
+# Academic scheme (NEP / CBCS) detection
+# ---------------------------------------------------------------------------
+
+# Canonical scheme IDs and their human-readable labels.
+ACADEMIC_SCHEMES: dict[str, str] = {
+    "cbcs": "CBCS",
+    "nep": "NEP 2020",
+    "nep2020": "NEP 2020",
+}
+
+# Maps every known mention (lowercase phrase) to a canonical scheme ID.
+# Maps every known mention (lowercase phrase) to a canonical scheme ID.
+ACADEMIC_SCHEME_ALIASES: dict[str, str] = {
+    "cbcs": "cbcs",
+    "choice based credit system": "cbcs",
+    "choice-based credit system": "cbcs",
+    "choice based credit": "cbcs",
+    "nep": "nep",
+    "nep 2020": "nep2020",
+    "nep2020": "nep2020",
+    "nep-2020": "nep2020",
+    "new education policy": "nep2020",
+    "new education policy 2020": "nep2020",
+    "national education policy": "nep2020",
+    "national education policy 2020": "nep2020",
+    "fyugp": "nep2020",
+    "fygup": "nep2020",
+    "four year undergraduate programme": "nep2020",
+    "four-year undergraduate programme": "nep2020",
+}
+
+_ACADEMIC_SCHEME_PATTERN = re.compile(
+    r"\b(" + "|".join(
+        re.escape(a) for a in sorted(ACADEMIC_SCHEME_ALIASES, key=len, reverse=True)
+    ) + r")\b",
+    re.IGNORECASE,
+)
+
+
+def detect_academic_scheme(text: str) -> str | None:
+    """Detect an academic scheme mention in free text.
+
+    Returns the canonical scheme ID ("cbcs" | "nep" | "nep2020") or None.
+    """
+    if not text:
+        return None
+    match = _ACADEMIC_SCHEME_PATTERN.search(text.strip().lower())
+    if match:
+        return ACADEMIC_SCHEME_ALIASES.get(match.group(0).lower())
+    return None
+
+
+def scheme_label(scheme: str | None) -> str | None:
+    """Human-readable label for a canonical scheme ID."""
+    if not scheme:
+        return None
+    return ACADEMIC_SCHEMES.get(str(scheme).lower())
 
 
 # ---------------------------------------------------------------------------

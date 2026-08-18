@@ -3,6 +3,14 @@ backend/app/ingest/knowledge_base.py
 
 Knowledge Base Downloader & Sync.
 
+DEPRECATED — retained as an internal module for reference only. The single
+ingestion pipeline is the Website Knowledge Sync engine
+(``app.knowledge_sync.web_engine`` / ``web_crawler``), which supersedes this
+manual PDF downloader and is the only pipeline exposed by the admin UI. This
+module is no longer reachable from any route; it is kept (not deleted) so the
+shared download/extract helpers remain available if ever needed.
+
+Legacy behaviour:
 Crawls the official Cluster University Srinagar website (cusrinagar.edu.in)
 for official PDF documents, downloads new ones, and organizes them into
 backend/data/documents/ with category folders.

@@ -73,6 +73,20 @@ _SPECIFIC_PREFIXES = (
     "tell me", "show me", "list", "explain", "describe",
 )
 
+# Natural-language words that denote a programme LEVEL / category. These are
+# exact labels the bot itself shows (UG / PG / PhD / ...) and must resolve to
+# their literal navigation category — never to a semantically-warped intent
+# (e.g. the embedding model maps "ug" near the "results" centroid because the
+# results KB contains "ug results" paraphrases).
+_LEVEL_WORDS: dict[str, str] = {
+    "undergraduate": "ug",
+    "under graduate": "ug",
+    "postgraduate": "pg",
+    "post graduate": "pg",
+    "doctorate": "phd",
+    "design your degree": "dyd",
+}
+
 
 def classify(message: str) -> tuple[str, str | None]:
     """
@@ -81,24 +95,38 @@ def classify(message: str) -> tuple[str, str | None]:
     intent_type: "broad" | "select" | "specific" | "unknown"
     category:    the matched category id, or None
 
-    Uses semantic intent classification first, falling back to keyword
-    matching when confidence is low. This ensures semantically equivalent
-    questions like "Available programs" and "What can I study?" both
-    resolve to the same "courses" intent.
+    Resolves exact navigation labels FIRST with the deterministic keyword/level
+    map, and only falls back to the semantic classifier for natural-language
+    phrasing. This guarantees that a label the bot itself renders (e.g. the
+    "ug" chip) always returns to the same category instead of being hijacked by
+    an out-of-context semantic match ("ug" -> results, "phd" -> authorities).
     """
     text = message.strip().lower()
     text = re.sub(r"[^a-z0-9\s]", "", text)
     words = text.split()
 
     # ---- Step 1: Specific question starters (what, how, etc.) ----
-    # Check BEFORE semantic classifier so factual questions ("what is the
-    # mission?") go to RAG rather than being misclassified as navigation.
+    # Check BEFORE anything else so factual questions ("what is the mission?")
+    # go to RAG rather than being misclassified as navigation.
     for prefix in _SPECIFIC_PREFIXES:
         if text.startswith(prefix):
             return "specific", None
 
-    # ---- Step 2: Semantic classification for navigation intents ----
-    # Only runs for messages that don't start with a question word.
+    # ---- Step 2: Broad keywords (exact / known navigation label) ----
+    # Literal labels are ground truth — a bot-rendered option id resolves to
+    # its own category deterministically, never through the semantic model.
+    if text in _BROAD_KEYWORDS:
+        return "broad", _BROAD_KEYWORDS[text]
+    if len(words) == 1 and words[0] in _BROAD_KEYWORDS:
+        return "broad", _BROAD_KEYWORDS[words[0]]
+    if text in _LEVEL_WORDS:
+        return "broad", _LEVEL_WORDS[text]
+    if len(words) <= 2 and text in _LEVEL_WORDS:
+        return "broad", _LEVEL_WORDS[text]
+
+    # ---- Step 3: Semantic classification for natural-language navigation ----
+    # Runs only for messages that don't start with a question word and weren't
+    # a literal navigation label.
     try:
         from app.orchestrator.intent_classifier import classify_broad
         cat, confidence, debug = classify_broad(text)
@@ -110,12 +138,6 @@ def classify(message: str) -> tuple[str, str | None]:
             return "broad", cat
     except Exception:
         log.warning("Semantic classifier failed, falling back to keyword", exc_info=True)
-
-    # ---- Step 3: Broad keywords (exact match or single word) ----
-    if text in _BROAD_KEYWORDS:
-        return "broad", _BROAD_KEYWORDS[text]
-    if len(words) == 1 and words[0] in _BROAD_KEYWORDS:
-        return "broad", _BROAD_KEYWORDS[words[0]]
 
     return "specific", None
 
@@ -679,6 +701,15 @@ def get_broad_response(category: str) -> dict[str, Any]:
             "message": "Select an integrated programme.",
             "options": _PROGRAMMES["integrated"],
         }
+    if cat == "phd":
+        prog = _PROGRAMME_DETAILS.get("phd")
+        if prog:
+            return {
+                "type": "detail",
+                "title": prog["title"],
+                "fields": prog["fields"],
+                "actions": prog.get("actions", []),
+            }
     if cat in _TOPICS:
         t = _TOPICS[cat]
         return {"type": "options", "title": t["title"], "message": t["message"], "options": t["options"]}
@@ -714,10 +745,11 @@ def get_selection_response(chat_id: str, selection: str) -> dict[str, Any]:
     """Handle a user's option selection, advance the nav path."""
     # Treat "back" as popping the last level.
     if selection == "back":
-        path = _nav_state.get(chat_id, [])
-        if path:
-            path.pop()
-            _nav_state[chat_id] = path
+        with _nav_lock:
+            path = _nav_state.get(chat_id, [])
+            if path:
+                path.pop()
+                _nav_state[chat_id] = path
         # Show the parent level.
         if path:
             return get_broad_response(path[-1])
@@ -736,9 +768,14 @@ def get_selection_response(chat_id: str, selection: str) -> dict[str, Any]:
         return {"type": "detail", "title": detail["title"], "fields": detail["fields"]}
 
     # If it matches a broad category, treat as navigation.
+    # Normalise via _BROAD_KEYWORDS so "admission" -> "admissions" and
+    # "fee structure" -> "fee" resolve to a real response (not the RAG
+    # fallback). Store the NORMALISED category on the nav path so "back"
+    # resolves the parent level correctly.
     if selection in _BROAD_KEYWORDS:
-        advance_path(chat_id, selection)
-        return get_broad_response(selection)
+        cat = _BROAD_KEYWORDS[selection]
+        advance_path(chat_id, cat)
+        return get_broad_response(cat)
 
     # Check if it matches a programme level.
     if selection in _PROGRAMMES:

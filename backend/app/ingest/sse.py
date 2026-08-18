@@ -42,16 +42,29 @@ class SSEManager:
             job_queues = list(self._subscribers.get(upload_id, []))
             global_queues = list(self._global_subscribers)
         msg = {"event": event, "data": data}
+        terminal = event in ("completed", "failed", "cancelled")
         for q in job_queues:
             try:
                 q.put_nowait(msg)
             except asyncio.QueueFull:
-                pass
+                # Never drop the terminal event — evict the oldest buffered
+                # event instead so the client stream always terminates.
+                if terminal:
+                    try:
+                        q.get_nowait()
+                        q.put_nowait(msg)
+                    except asyncio.QueueEmpty:
+                        pass
         for q in global_queues:
             try:
                 q.put_nowait({**msg, "upload_id": upload_id})
             except asyncio.QueueFull:
-                pass
+                if terminal:
+                    try:
+                        q.get_nowait()
+                        q.put_nowait({**msg, "upload_id": upload_id})
+                    except asyncio.QueueEmpty:
+                        pass
 
     async def event_generator(self, upload_id: str) -> AsyncGenerator[str, None]:
         queue = await self.subscribe(upload_id)

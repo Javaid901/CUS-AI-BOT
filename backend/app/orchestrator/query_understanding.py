@@ -68,6 +68,10 @@ COMMON_MISSPELLINGS: dict[str, str] = {
     "addmission": "admission",
     "adimisions": "admissions",
     "admissionss": "admissions",
+    "admision": "admission",
+    "attendence": "attendance",
+    "attandance": "attendance",
+    "attendace": "attendance",
     "eligiblity": "eligibility",
     "eligibilty": "eligibility",
     "eligibilityy": "eligibility",
@@ -97,10 +101,16 @@ COMMON_MISSPELLINGS: dict[str, str] = {
     "sylabus": "syllabus",
     "syllabuss": "syllabus",
     "syllubs": "syllabus",
+    "curriculam": "curriculum",
+    "curiculum": "curriculum",
+    "curriclum": "curriculum",
+    "curriculumm": "curriculum",
     "scolarship": "scholarship",
     "scholorship": "scholarship",
     "scholarshipp": "scholarship",
     "schlr": "scholarship",
+    "scholerhip": "scholarship",
+    "scholarshipss": "scholarships",
     "durations": "duration",
     "duratn": "duration",
     "duraton": "duration",
@@ -131,7 +141,23 @@ COMMON_MISSPELLINGS: dict[str, str] = {
     "intaks": "seats",
     "specialisation": "specializations",
     "specialization": "specializations",
-    "subjects": "specializations",
+    "semster": "semester",
+    "semestr": "semester",
+    "semesterss": "semesters",
+    "nepp": "nep",
+    "nep 2000": "nep 2020",
+    "nep 20200": "nep 2020",
+    "progamme": "programme",
+    "progam": "program",
+    "programms": "programs",
+    "programes": "programs",
+    "progrmas": "programs",
+    "cources": "courses",
+    "cource": "course",
+    "couse": "course",
+    "corses": "courses",
+    "coursess": "courses",
+    "carrear": "career",
     "carear": "career",
     "carrier": "career",
     "carrer": "career",
@@ -140,6 +166,55 @@ COMMON_MISSPELLINGS: dict[str, str] = {
     "baklog": "backlog",
     "transcrip": "transcript",
     "transcripe": "transcript",
+    "subjcts": "subjects",
+    "subjct": "subject",
+    "subjects": "subjects",
+    "subjcets": "subjects",
+    "subjecs": "subjects",
+    "notifcation": "notification",
+    "notications": "notifications",
+    "notificatiom": "notification",
+    "circualr": "circular",
+    "anouncement": "announcement",
+    "announcment": "announcement",
+    "anoncements": "announcements",
+    "holidayys": "holidays",
+    "calnder": "calendar",
+    "calenders": "calendars",
+    "regstrar": "registrar",
+    "registrar": "registrar",
+    # Granular information-retrieval vocabulary (spec: field-level queries)
+    "feee": "fee",
+    "ffe": "fee",
+    "fee strcture": "fee structure",
+    "fees strcture": "fee structure",
+    "feees": "fee",
+    "durration": "duration",
+    "durraton": "duration",
+    "crdits": "credits",
+    "crdit": "credits",
+    "creddits": "credits",
+    "creditt": "credits",
+    "credit": "credits",
+    "elegibility": "eligibility",
+    "eligbility": "eligibility",
+    "eligibilliity": "eligibility",
+    "doccuments": "documents",
+    "documenst": "documents",
+    "doc": "documents",
+    "semsters": "semesters",
+    "semestrs": "semesters",
+    "semestrer": "semesters",
+    "smster": "semester",
+    "smtr": "semester",
+    "semister": "semester",
+    "semiters": "semesters",
+    "minorss": "minors",
+    "major_disciplines": "major disciplines",
+    "major courses": "majors",
+    "major course": "majors",
+    "minor courses": "minors",
+    "minor course": "minors",
 }
 
 # Abbreviation expansions
@@ -169,6 +244,7 @@ ABBREVIATIONS: dict[str, str] = {
     "ug": "UG",
     "pg": "PG",
     "dyd": "DYD",
+    "fyugp": "FYUGP",
     "cuet": "CUET",
     "naac": "NAAC",
     "jkbose": "JKBOSE",
@@ -186,6 +262,47 @@ KNOWN_TOPICS: set[str] = {
     "library", "sports", "placement", "placements", "career",
     "prospectus", "seats", "intake", "specializations",
     "admission_mode", "admission process",
+    # Navigation controls — must NEVER be fuzzy-corrected into programme or
+    # topic lookalikes ("back" -> "ba" is a 1-edit-distance false match that
+    # would erase the back signal and re-route to a bare-programme plan).
+    "back", "cancel", "skip",
+    # Intelligence-upgrade additions: abbreviations, schemes and synonyms
+    "nep", "fyugp", "fygup", "curriculum", "curriculam", "semester",
+    "semesters", "attendance", "sgpa", "cgpa", "grades", "marks",
+    "papers", "modules", "programme", "programmes", "program",
+    "programs", "enrollment", "enrolment",
+    # Fee/eligibility phrasing words (never corrected into lookalike topics)
+    "cost", "price", "charges", "charge", "payment", "expenses", "expense",
+    "amount", "tuition", "worth", "concessions", "concession",
+    "register", "registration", "enroll", "enrol", "enrollments",
+    "score", "scored", "scoring", "percent", "percentage", "marksheet",
+    "structure", "structures", "criteria", "requirement", "requirements",
+    "policy", "policies", "education", "educational", "apply", "joining",
+    "form", "forms", "last", "final", "open", "opened", "starts", "held",
+    "date", "semester-wise", "semesterwise", "learn", "learned", "taught",
+    # Service-keyword words (never fuzzy-corrected into lookalike topics —
+    # "hall ticket status" must stay a service request)
+    "hall", "ticket", "card", "status", "receipt", "certificate", "degree",
+    "profile", "helpdesk", "support", "migration", "xerox", "photocopy",
+    "copy", "backlogs", "semester", "examination",
+    # Authority / office vocabulary — never fuzzy-corrected into service
+    # keywords ("registrar" -> "register" would hijack student registration).
+    "registrar", "registrars", "chancellor", "chancellors", "vice chancellor",
+    "vc", "controller", "coe", "dean", "deans", "warden", "librarian",
+    "officer", "officers", "authority", "authorities", "incharge",
+    "in-charge", "secretary", "director", "handles", "handling", "deals",
+    "dealing", "manages", "managing", "oversees", "supervises",
+    # News / website-knowledge vocabulary — preserved verbatim so news
+    # intent detection can match current-notice queries ("latest circular",
+    # "examination notification", "academic calendar", "holiday notice").
+    "notice", "notices", "notification", "notifications", "circular",
+    "circulars", "calendar", "calendars", "announcement", "announcements",
+    "news", "newsletter", "newsletters", "bulletin", "bulletins",
+    "holiday", "holidays", "update", "updates", "published", "publish",
+    # Granular information-retrieval vocabulary (never fuzzy-corrected away)
+    "major", "majors", "minor", "minors", "credit", "credits", "scheme",
+    "schemes", "vac", "sec", "aec", "vacancy", "vacancies", "semester",
+    "semesters",
 }
 
 # Programme-level keywords that should not be corrected
@@ -196,6 +313,43 @@ PROGRAMME_KEYWORDS: set[str] = {
     "integrated", "ug", "pg", "dyd",
 }
 
+
+# Requirement words that are clearly not programme/department names (lowercase).
+UNIVERSITY_STOP_WORDS: set[str] = {
+    # Pronouns / determiners
+    "a", "an", "the", "this", "that", "these", "those", "my", "your",
+    "our", "their", "his", "her", "its", "it's", "i", "me", "we", "us",
+    # Prepositions / conjunctions / adverbs
+    "of", "for", "to", "in", "on", "at", "by", "with", "from", "about",
+    "into", "onto", "over", "under", "through", "across", "between", "among",
+    "after", "before", "since", "during", "and", "or", "but", "nor", "not",
+    "so", "if", "then", "than", "also", "too", "very", "more", "most", "less",
+    # Verbs / auxiliaries
+    "is", "are", "was", "were", "am", "be", "been", "being", "do", "does",
+    "did", "done", "have", "has", "had", "having", "can", "could", "would",
+    "will", "shall", "should", "may", "might", "must", "need", "needs",
+    "want", "wants", "know", "knows", "tell", "show", "give", "list",
+    "explain", "describe", "find", "search", "look", "take", "make", "get",
+    "got", "put", "use", "used", "see", "let", "like", "called", "regarding",
+    "what", "which", "who", "whom", "whose", "when", "where", "why", "how",
+    # Greetings / fillers / other
+    "hi", "hello", "hey", "please", "thanks", "thank", "ok", "okay",
+    "yes", "no", "maybe", "sure", "again", "still", "even", "only", "just",
+    "all", "any", "some", "many", "much", "few", "both", "each", "every",
+    "kindly", "available", "information", "details", "detail", "info",
+    "help", "helpful", "question",
+    # Adjectives/quantifiers that must never be fuzzy-corrected into programme
+    # names or topics ("main" -> "ma", "basic" -> "ba", "come" -> "bcom", ...)
+    "main", "core", "basic", "full", "per", "such", "total", "various",
+    "specific", "certain", "different", "important", "recent", "latest",
+    "current", "first", "open", "last", "final",
+    # Verbs that must never be corrected ("come" -> "bcom", "went" -> ...)
+    "come", "came", "going", "go", "went", "does", "doing",
+    # Course-discovery verbs: "offers/officers" is a 2-edit false match that
+    # would break "which college offers BCA" course-college routing.
+    "offer", "offers", "offered", "offering", "provides", "providing",
+    "teaches", "teaching", "runs", "running",
+}
 
 # ---------------------------------------------------------------------------
 # Levenshtein distance for fuzzy matching
@@ -218,14 +372,18 @@ def _levenshtein(a: str, b: str) -> int:
 
 
 def _fuzzy_correct(word: str, dictionary: set[str], max_dist: int = 2) -> str | None:
-    """Find the closest match in a dictionary using edit distance."""
+    """Find the closest match in a dictionary using edit distance.
+
+    Iterates the dictionary in sorted order so results are deterministic
+    regardless of set iteration order / hash seed.
+    """
     if word in dictionary:
         return word
     if len(word) <= 2:
         return None
     best = None
     best_dist = max_dist + 1
-    for candidate in dictionary:
+    for candidate in sorted(dictionary):
         dist = _levenshtein(word, candidate)
         if dist < best_dist:
             best_dist = dist
@@ -333,6 +491,9 @@ def process_query(text: str) -> QueryResult:
     fuzzy_corrected = []
     for w in clean.split():
         if w in KNOWN_TOPICS or w in PROGRAMME_KEYWORDS:
+            fuzzy_corrected.append(w)
+            continue
+        if w in UNIVERSITY_STOP_WORDS:
             fuzzy_corrected.append(w)
             continue
         if w not in known_words and len(w) > 3:

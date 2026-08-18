@@ -79,7 +79,15 @@ class ConversationState:
     student_name: str | None = None
     student_programme: str | None = None
     student_semester: int | None = None
+    student_academic_scheme: str | None = None  # "cbcs" | "nep" | "nep2020" from the Student record
     student_session_id: str | None = None
+    # Extended session fields (managed by app.orchestrator.student_session)
+    student_college: str | None = None       # college display name
+    student_batch: str | None = None         # e.g. "2023-2026"
+    student_login_timestamp: float | None = None
+    student_session_expiry: float | None = None   # epoch seconds
+    semester_list: list[int] = field(default_factory=list)  # dynamic, backend-driven
+    current_semester: int | None = None      # remembered semester selection
 
     # Pending request — saved BEFORE auth form is shown so it can be resumed
     # automatically after successful authentication.
@@ -87,6 +95,19 @@ class ConversationState:
     pending_action: str | None = None  # "fetch" | "search" | "execute"
     pending_query: str | None = None   # original user message
     pending_params: dict[str, str] = field(default_factory=dict)
+
+    # Academic catalogue navigation — saved when the engine yields a picker
+    # (semester / minor / curriculum doc) so the next message continues.
+    catalogue_pending: dict[str, Any] | None = None
+
+    # Slot-fill continuation — when the planner asked for a missing entity
+    # (e.g. the programme for a fee request), the pending topic is stored so
+    # the NEXT message resolves the pending request directly.
+    slot_topic: str | None = None
+    slot_request: dict[str, Any] | None = None
+
+    # Last canonical query contract (serialized) for cross-turn resolution.
+    last_contract: dict[str, Any] | None = None
 
     def touch(self) -> None:
         self.touched_at = time.time()
@@ -123,9 +144,14 @@ async def set_state(chat_id: str, state: ConversationState) -> None:
 
 
 async def clear_state(chat_id: str) -> None:
-    """Clear all state for a chat session."""
+    """Clear all state for a chat session (incl. the legacy nav path)."""
     async with _LOCK:
         _STATE.pop(chat_id, None)
+    try:
+        from app.chat.intent_router import clear_nav
+        clear_nav(chat_id)
+    except Exception:
+        pass
 
 
 async def pop_breadcrumb(chat_id: str) -> Breadcrumb | None:
@@ -153,6 +179,14 @@ async def evict_stale() -> int:
         stale = [cid for cid, s in _STATE.items() if now - s.touched_at > _TTL_SECONDS]
         for cid in stale:
             _STATE.pop(cid, None)
+    if stale:
+        # Keep the legacy nav-path store bounded in lockstep with the states.
+        try:
+            from app.chat.intent_router import clear_nav
+            for cid in stale:
+                clear_nav(cid)
+        except Exception:
+            pass
     return len(stale)
 
 

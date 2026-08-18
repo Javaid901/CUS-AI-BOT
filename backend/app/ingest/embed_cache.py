@@ -3,9 +3,12 @@ from __future__ import annotations
 import asyncio
 import hashlib
 import json
+import threading
 from pathlib import Path
 
 from app.utils.logging import log
+
+_MAX_ENTRIES = 200_000
 
 
 class EmbeddingCache:
@@ -14,7 +17,7 @@ class EmbeddingCache:
     def __init__(self, path: str | Path | None = None):
         self.path = Path(path or "./data/embed_cache.json")
         self._cache: dict[str, list[float]] = {}
-        self._lock = asyncio.Lock()
+        self._lock = threading.Lock()
         self._dirty = False
         self._load()
 
@@ -37,18 +40,24 @@ class EmbeddingCache:
 
     async def get(self, text: str) -> list[float] | None:
         key = self._key(text)
-        async with self._lock:
+        with self._lock:
             return self._cache.get(key)
 
     async def set(self, text: str, vector: list[float]) -> None:
         key = self._key(text)
-        async with self._lock:
+        with self._lock:
             self._cache[key] = vector
             self._dirty = True
+            self._prune()
+
+    def _prune(self) -> None:
+        """Bound memory/disk growth — drop oldest entries past the cap."""
+        while len(self._cache) > _MAX_ENTRIES:
+            self._cache.pop(next(iter(self._cache)))
 
     async def has(self, text: str) -> bool:
         key = self._key(text)
-        async with self._lock:
+        with self._lock:
             return key in self._cache
 
     async def get_many(
@@ -57,7 +66,7 @@ class EmbeddingCache:
         """Return (indices_of_hits, embeddings_for_hits) aligned with input."""
         hits_idx: list[int] = []
         hits_emb: list[list[float]] = []
-        async with self._lock:
+        with self._lock:
             for i, text in enumerate(texts):
                 key = self._key(text)
                 vec = self._cache.get(key)
@@ -67,14 +76,15 @@ class EmbeddingCache:
         return hits_idx, hits_emb
 
     async def set_many(self, texts: list[str], vectors: list[list[float]]) -> None:
-        async with self._lock:
+        with self._lock:
             for text, vec in zip(texts, vectors):
                 key = self._key(text)
                 self._cache[key] = vec
             self._dirty = True
+            self._prune()
 
     async def save(self) -> None:
-        async with self._lock:
+        with self._lock:
             if self._dirty:
                 self._do_save()
                 self._dirty = False
@@ -85,7 +95,7 @@ class EmbeddingCache:
             self._dirty = False
 
     async def size(self) -> int:
-        async with self._lock:
+        with self._lock:
             return len(self._cache)
 
     def size_sync(self) -> int:

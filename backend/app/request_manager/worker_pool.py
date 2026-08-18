@@ -91,22 +91,28 @@ class WorkerPool:
             try:
                 request = await request_queue.dequeue()
                 if request is None:
+                    # Idle worker — retract when above the target so the pool
+                    # actually scales back down after a load peak.
+                    if self.active_count > self.target_count:
+                        await asyncio.sleep(0.05)
+                        break
                     await asyncio.sleep(0.1)
                     continue
-                await self._process_request(request)
+                await self._handle(request)
             except asyncio.CancelledError:
                 break
             except Exception as exc:
                 log.error("Worker error: %s", exc)
                 await asyncio.sleep(0.5)
 
-    async def _process_request(self, request: QueuedRequest) -> None:
+    async def _handle(self, request: QueuedRequest) -> None:
         """Process a single request using the configured processor."""
         if not self._processor:
             log.error("No processor configured for worker pool")
             return
         try:
-            await self._processor(request)
+            result = await self._processor(request)
+            request.result = result
             request.state = RequestState.COMPLETED
         except Exception as exc:
             log.error("Request %s failed: %s", request.id, exc)
@@ -117,6 +123,8 @@ class WorkerPool:
                 log.info("Retrying request %s (attempt %d/%d)",
                          request.id, request.retry_count + 1, request.max_retries)
                 await request_queue.retry(request.id)
+                return
+        await request_queue.complete(request.id)
 
     @property
     def stats(self) -> dict:

@@ -1,0 +1,154 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Authority Admin — Cluster University of Srinagar</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Sora:wght@600;700;800&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="../css/main.css" />
+  <link rel="stylesheet" href="../css/responsive.css" />
+  <link rel="stylesheet" href="../css/admin.css" />
+  <link rel="stylesheet" href="../css/authority-admin.css" />
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><rect width='32' height='32' rx='7' fill='%230f7a4d'/><path d='M16 8 5 13l11 5 9-4.09V20h2v-7L16 8z' fill='white'/><path d='M9 17.18v4L16 25l7-3.82v-4L16 21l-7-3.82z' fill='white'/></svg>" />
+</head>
+<body>
+  <div class="admin-wrap">
+    <div class="admin-top">
+      <div class="logo"><svg viewBox="0 0 24 24" width="22" height="22" fill="currentColor" aria-hidden="true"><path d="M12 3 1 8l11 5 9-4.09V17h2V8L12 3z"/><path d="M5 13.18v4L12 21l7-3.82v-4L12 17l-7-3.82z"/></svg></div>
+      <div class="t">CUS Authority Admin<small>Authority Administration Portal</small></div>
+      <div class="right">
+        <span id="userLabel" style="display:none;"></span>
+        <a class="admin-link" href="index.html">↩ Back to site</a>
+        <button id="logoutBtn" class="admin-link" style="display:none;background:none;border:none;cursor:pointer;" title="Logout">Logout</button>
+      </div>
+    </div>
+
+    <div class="admin-main">
+      <!-- ======= Login ======= -->
+      <div id="loginView">
+        <div class="admin-card auth-card">
+          <div class="brand" style="display:flex;align-items:center;gap:12px;">
+            <span class="logo" style="width:44px;height:44px;border-radius:12px;display:grid;place-items:center;background:linear-gradient(135deg,var(--green),var(--green-700));color:#fff;"><svg viewBox="0 0 24 24" width="22" height="22" fill="currentColor" aria-hidden="true"><path d="M12 3 1 8l11 5 9-4.09V17h2V8L12 3z"/><path d="M5 13.18v4L12 21l7-3.82v-4L12 17l-7-3.82z"/></svg></span>
+            <span style="font-family:var(--display);font-weight:700;font-size:18px;color:var(--navy);">Authority Administration Portal</span>
+          </div>
+          <p class="sub">Cluster University of Srinagar &mdash; sign in to administer your authority's grievances.</p>
+          <form class="form" id="loginForm">
+            <label>Username or Email<input type="text" name="username" required placeholder="admission_admin" autocomplete="username" /></label>
+            <label>Password<input type="password" name="password" required placeholder="••••••••" autocomplete="current-password" /></label>
+            <p class="auth-error" id="loginError" style="display:none;"></p>
+            <button class="btn green block" type="submit" id="loginBtn">Sign In</button>
+          </form>
+          <p class="muted" style="font-size:13px;margin-top:14px;">Credentials are issued by the Cluster University Administration.</p>
+        </div>
+      </div>
+
+      <!-- ======= Portal ======= -->
+      <div id="dashView" style="display:none;">
+        <div class="aa-header admin-card" id="aaHeader">
+          <div class="aa-header-brand">
+            <div class="aa-avatar">🏛</div>
+            <div>
+              <h1 id="aaAuthName">Authority Administration Portal</h1>
+              <p class="sub" id="aaSub">Welcome</p>
+            </div>
+          </div>
+          <div class="aa-nav">
+            <button class="aa-nav-btn active" data-view="dashboard">📊 Dashboard</button>
+            <button class="aa-nav-btn" data-view="grievances">📋 Grievances <span class="aa-unread-pill" id="navUnread" style="display:none;"></span></button>
+            <button class="aa-nav-btn" data-view="profile">👤 Profile</button>
+          </div>
+        </div>
+
+        <!-- ===== Dashboard ===== -->
+        <div id="viewDashboard" class="aa-view">
+          <div class="admin-card">
+            <div class="aa-kpis" id="aaKpis"><p class="aa-loading">Loading dashboard…</p></div>
+          </div>
+          <div class="admin-card">
+            <h2>Recent Grievances</h2>
+            <div class="auth-table-wrap">
+              <table class="auth-table">
+                <thead><tr><th>Reference</th><th>Student</th><th>Subject</th><th>Status</th><th>Read</th><th>Date</th><th></th></tr></thead>
+                <tbody id="dashRecentRows"><tr><td colspan="7" class="aa-loading">Loading…</td></tr></tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+
+        <!-- ===== Grievances ===== -->
+        <div id="viewGrievances" class="aa-view" style="display:none;">
+          <div class="admin-card">
+            <div class="aa-filters">
+              <input type="text" id="gfQ" class="aa-input" placeholder="Search reference, student, roll no, email, subject…" />
+              <select id="gfStatus" class="aa-input">
+                <option value="">All statuses</option>
+                <option value="submitted">Submitted</option>
+                <option value="acknowledged">Acknowledged</option>
+                <option value="in_progress">In Progress</option>
+                <option value="resolved">Resolved</option>
+                <option value="closed">Closed</option>
+                <option value="rejected">Rejected</option>
+              </select>
+              <select id="gfRead" class="aa-input">
+                <option value="">All (read/unread)</option>
+                <option value="unread">Unread</option>
+                <option value="read">Read</option>
+              </select>
+              <input type="date" id="gfFrom" class="aa-input" title="From date" />
+              <input type="date" id="gfTo" class="aa-input" title="To date" />
+              <button class="btn green" id="gfApply">Apply</button>
+              <button class="btn sm ghost" id="gfReset">Reset</button>
+            </div>
+            <div class="auth-table-wrap">
+              <table class="auth-table">
+                <thead><tr><th>Reference</th><th>Student</th><th>Roll No</th><th>College</th><th>Sem.</th><th>Subject</th><th>Status</th><th>Read</th><th>Created</th><th></th></tr></thead>
+                <tbody id="grievanceRows"><tr><td colspan="10" class="aa-loading">Loading grievances…</td></tr></tbody>
+              </table>
+            </div>
+            <div class="aa-pager" id="aaPager"></div>
+          </div>
+        </div>
+
+        <!-- ===== Detail ===== -->
+        <div id="viewDetail" class="aa-view" style="display:none;">
+          <button class="btn sm ghost" id="detailBack">← Back to Grievances</button>
+          <div id="detailBody"></div>
+        </div>
+
+        <!-- ===== Profile ===== -->
+        <div id="viewProfile" class="aa-view" style="display:none;">
+          <div class="admin-card">
+            <h2>Authority Profile</h2>
+            <div id="profileInfo" class="aa-profile"><p class="aa-loading">Loading profile…</p></div>
+          </div>
+          <div class="admin-card">
+            <h2>My Account</h2>
+            <form class="form" id="profileForm" style="max-width:420px;">
+              <label>Full Name<input type="text" id="pfFullName" maxlength="120" /></label>
+              <label>Designation<input type="text" id="pfDesignation" maxlength="120" /></label>
+              <label>Phone<input type="text" id="pfPhone" maxlength="30" /></label>
+              <button class="btn green" type="submit" id="saveProfileBtn">💾 Save Profile</button>
+              <p class="muted" style="font-size:12px;margin-top:8px;">Authority details (name, category, status, official email, routing) are managed by the Super Admin.</p>
+            </form>
+          </div>
+          <div class="admin-card">
+            <h2>Change Password</h2>
+            <form class="form" id="pwdForm" style="max-width:420px;">
+              <label>Current Password<input type="password" id="pwCurrent" required autocomplete="current-password" /></label>
+              <label>New Password<input type="password" id="pwNew" required minlength="6" maxlength="128" autocomplete="new-password" /></label>
+              <label>Confirm New Password<input type="password" id="pwNew2" required autocomplete="new-password" /></label>
+              <button class="btn green" type="submit" id="changePwdBtn">🔑 Update Password</button>
+            </form>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div id="toastContainer" class="toast-container"></div>
+
+  <script src="../js/config.js"></script>
+  <script src="../js/authority-admin.js"></script>
+</body>
+</html>

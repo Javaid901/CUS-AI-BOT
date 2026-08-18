@@ -27,8 +27,7 @@ from sqlalchemy import (
     Text,
 )
 
-from app.database import Base, utcnow
-from app.models.db_models import _UUID
+from app.database import Base, _UUID, utcnow
 
 
 class InteractionEvent(Base):

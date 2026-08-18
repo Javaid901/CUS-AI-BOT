@@ -436,7 +436,10 @@
   }
 
   window.resolveGap = function (gapId) {
-    fetchJSON(BASE + "/knowledge-gaps/" + gapId + "/resolve").then(function () { loadGaps(); }).catch(function () {});
+    fetch(BASE + "/knowledge-gaps/" + gapId + "/resolve", {
+      method: "POST",
+      headers: authHeaders()
+    }).then(function (r) { if (r.ok) loadGaps(); }).catch(function () {});
   };
 
   // ===================================================================
@@ -594,7 +597,24 @@
     if (!fmt || !active) return;
     var url = BASE + "/export/" + fmt.value + "?report=" + active.dataset.section + "&period=" + getPeriod();
     log("Export: " + url);
-    window.open(url, "_blank");
+    // window.open cannot send the Authorization header; fetch + download instead.
+    fetch(url, { headers: authHeaders() })
+      .then(function (r) {
+        if (r.status === 401) { throw new Error("Unauthorized — re-login required"); }
+        if (!r.ok) { throw new Error("Export failed (" + r.status + ")"); }
+        return r.blob();
+      })
+      .then(function (blob) {
+        var a = document.createElement("a");
+        a.href = URL.createObjectURL(blob);
+        a.download = "insights_export_" + active.dataset.section + "." + fmt.value;
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        URL.revokeObjectURL(a.href);
+        log("Export downloaded");
+      })
+      .catch(function (err) { log("Export error: " + err.message); });
   }
 
   // ===================================================================

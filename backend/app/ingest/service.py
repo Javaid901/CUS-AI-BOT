@@ -19,6 +19,30 @@ from app.utils.logging import log
 from sqlalchemy.orm import Session
 
 
+_DOC_META_COLUMNS = (
+    "academic_scheme", "programme", "department", "batch",
+    "semester", "document_type", "category",
+    "college_id", "college_name", "scope", "source_kind",
+)
+
+
+def _doc_meta_fields(metadata: dict | None) -> dict:
+    """Pick content-metadata columns from a metadata dict (empty-safe)."""
+    if not metadata:
+        return {}
+    return {
+        k: str(v).strip()
+        for k, v in metadata.items()
+        if k in _DOC_META_COLUMNS and v not in (None, "")
+    }
+
+
+def _apply_doc_meta(doc: Document, metadata: dict | None) -> None:
+    """Set content-metadata columns on a Document row (no commit)."""
+    for key, value in _doc_meta_fields(metadata).items():
+        setattr(doc, key, value)
+
+
 def ingest_file(
     db: Session,
     owner_id,
@@ -26,6 +50,7 @@ def ingest_file(
     file_bytes: bytes,
     title: str | None = None,
     existing_doc: Document | None = None,
+    metadata: dict | None = None,
 ) -> Document:
     """Synchronous ingestion (kept for backward compatibility).
 
@@ -66,6 +91,7 @@ def ingest_file(
             chunk_count=0,
         )
         db.add(doc)
+    _apply_doc_meta(doc, metadata)
     db.commit()
     db.refresh(doc)
 
@@ -78,7 +104,7 @@ def ingest_file(
             raise ValueError("No extractable text found in document.")
         texts = [c["content"] for c in chunks]
         embeddings = embed_documents(texts)
-        add_chunks_with_embeddings(str(doc.id), doc.title, chunks, embeddings)
+        add_chunks_with_embeddings(str(doc.id), doc.title, chunks, embeddings, _doc_meta_fields(metadata))
         doc.chunk_count = len(chunks)
         doc.status = "ready"
         db.commit()
@@ -118,7 +144,7 @@ async def submit_upload_job(
         try:
             import uuid
             doc = db.get(Document, uuid.UUID(existing_doc_id))
-        except (ValueError, Exception):
+        except (ValueError, TypeError):
             doc = None
         if doc:
             doc.filename = stored_name
@@ -129,6 +155,7 @@ async def submit_upload_job(
             doc.status = "queued"
             doc.chunk_count = 0
             doc.error = None
+            _apply_doc_meta(doc, metadata)
             db.commit()
             db.refresh(doc)
         else:
@@ -160,6 +187,7 @@ async def submit_upload_job(
             status="queued",
             chunk_count=0,
         )
+        _apply_doc_meta(doc, metadata)
         db.add(doc)
         db.commit()
         db.refresh(doc)

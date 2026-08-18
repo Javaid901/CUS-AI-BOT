@@ -1,14 +1,19 @@
 """
 backend/app/authority/schemas.py
 
-Pydantic schemas for Authority Management.
+Pydantic schemas for Authority Management (PHASE 2: categories + validation).
 """
 
 from __future__ import annotations
 
 from datetime import datetime
 
-from pydantic import BaseModel
+from pydantic import BaseModel, EmailStr, Field
+
+AUTHORITY_NAME_MAX = 200
+DEPARTMENT_MAX = 200
+EMAIL_MAX = 255
+PHONE_MAX = 50
 
 
 class AdditionalContact(BaseModel):
@@ -19,49 +24,53 @@ class AdditionalContact(BaseModel):
 
 
 class AuthorityCreate(BaseModel):
-    department_name: str
-    authority_name: str
-    designation: str | None = None
-    email: str
-    phone: str
-    alternate_phone: str | None = None
+    department_name: str = Field(..., min_length=2, max_length=DEPARTMENT_MAX)
+    authority_name: str = Field(..., min_length=2, max_length=AUTHORITY_NAME_MAX)
+    designation: str | None = Field(None, max_length=DEPARTMENT_MAX)
+    email: EmailStr = Field(..., max_length=EMAIL_MAX)
+    phone: str = Field(..., max_length=PHONE_MAX)
+    alternate_phone: str | None = Field(None, max_length=PHONE_MAX)
     office_address: str | None = None
-    office_location: str | None = None
-    office_timings: str | None = None
-    website: str | None = None
+    office_location: str | None = Field(None, max_length=500)
+    office_timings: str | None = Field(None, max_length=200)
+    website: str | None = Field(None, max_length=500)
     services_offered: list[str] = []
     keywords: list[str] = []
     description: str | None = None
-    priority: int = 10
+    priority: int = Field(10, ge=0, le=100)
     active: bool = True
-    logo: str | None = None
-    office_image: str | None = None
-    working_days: str | None = None
-    emergency_contact: str | None = None
+    logo: str | None = Field(None, max_length=500)
+    office_image: str | None = Field(None, max_length=500)
+    working_days: str | None = Field(None, max_length=200)
+    emergency_contact: str | None = Field(None, max_length=50)
     additional_contacts: list[AdditionalContact] = []
+    category_id: str | None = None
+    source_kind: str | None = Field(None, max_length=20)
 
 
 class AuthorityUpdate(BaseModel):
-    department_name: str | None = None
-    authority_name: str | None = None
-    designation: str | None = None
-    email: str | None = None
-    phone: str | None = None
-    alternate_phone: str | None = None
+    department_name: str | None = Field(None, min_length=2, max_length=DEPARTMENT_MAX)
+    authority_name: str | None = Field(None, min_length=2, max_length=AUTHORITY_NAME_MAX)
+    designation: str | None = Field(None, max_length=DEPARTMENT_MAX)
+    email: EmailStr | None = None
+    phone: str | None = Field(None, max_length=PHONE_MAX)
+    alternate_phone: str | None = Field(None, max_length=PHONE_MAX)
     office_address: str | None = None
-    office_location: str | None = None
-    office_timings: str | None = None
-    website: str | None = None
+    office_location: str | None = Field(None, max_length=500)
+    office_timings: str | None = Field(None, max_length=200)
+    website: str | None = Field(None, max_length=500)
     services_offered: list[str] | None = None
     keywords: list[str] | None = None
     description: str | None = None
-    priority: int | None = None
+    priority: int | None = Field(None, ge=0, le=100)
     active: bool | None = None
-    logo: str | None = None
-    office_image: str | None = None
-    working_days: str | None = None
-    emergency_contact: str | None = None
+    logo: str | None = Field(None, max_length=500)
+    office_image: str | None = Field(None, max_length=500)
+    working_days: str | None = Field(None, max_length=200)
+    emergency_contact: str | None = Field(None, max_length=50)
     additional_contacts: list[AdditionalContact] | None = None
+    category_id: str | None = None
+    source_kind: str | None = Field(None, max_length=20)
 
 
 class AuthorityResponse(BaseModel):
@@ -86,6 +95,28 @@ class AuthorityResponse(BaseModel):
     working_days: str | None
     emergency_contact: str | None
     additional_contacts: list[dict[str, str]]
+    category_id: str | None = None
+    category_name: str | None = None
+    source_kind: str | None = "manual"
+    created_at: datetime | None = None
+    updated_at: datetime | None = None
+
+    model_config = {"from_attributes": True}
+
+
+class GrievanceCategoryCreate(BaseModel):
+    name: str = Field(..., min_length=2, max_length=120)
+    slug: str | None = Field(None, max_length=120)
+    description: str | None = Field(None, max_length=500)
+
+
+class GrievanceCategoryResponse(BaseModel):
+    id: str
+    name: str
+    slug: str
+    description: str | None
+    active: bool
+    authority_count: int = 0
     created_at: datetime | None = None
     updated_at: datetime | None = None
 
@@ -116,3 +147,9 @@ class AuthorityMatchResult(BaseModel):
     query: str
     match_type: str = "keyword"
     confidence: float = 0.0
+
+
+
+class MatchGrievanceRequest(BaseModel):
+    """Body for POST /api/authority/match (student grievance text)."""
+    text: str

@@ -43,18 +43,21 @@ class _UserBucket:
             return True
         return False
 
+    def refund(self, cost: int = 1) -> None:
+        """Credit back *cost* tokens (never exceeds the bucket cap)."""
+        self.tokens = min(self.max_tokens, self.tokens + cost)
+
     @property
     def available(self) -> float:
         self._refill()
         return self.tokens
 
-    @property
-    def wait_seconds(self) -> float:
-        """Estimated seconds until enough tokens are available for *cost*."""
+    def wait_seconds_for(self, cost: int) -> float:
+        """Estimated seconds until *cost* tokens are available."""
         self._refill()
         if self.refill_rate <= 0:
             return float("inf")
-        return self.tokens / self.refill_rate
+        return max(0.0, (cost - self.tokens) / self.refill_rate)
 
 
 class TokenBucket:
@@ -75,9 +78,18 @@ class TokenBucket:
             self._buckets[key] = _UserBucket(self._max_tokens, self._refill_rate)
         return self._buckets[key]
 
+    def _sweep_idle(self, now: float) -> None:
+        """Drop buckets idle for over an hour so memory stays bounded."""
+        cutoff = now - 3600.0
+        stale = [k for k, b in self._buckets.items() if b.last_refill < cutoff]
+        for k in stale:
+            del self._buckets[k]
+
     def consume(self, key: str, cost: int = 1) -> bool:
         """Deduct *cost* tokens from the user's bucket. Returns True if allowed."""
         with self._lock:
+            if len(self._buckets) > 5000:
+                self._sweep_idle(time.monotonic())
             bucket = self._get_or_create(key)
             return bucket.consume(cost)
 
@@ -91,12 +103,19 @@ class TokenBucket:
         """Estimate seconds until *cost* tokens are available."""
         with self._lock:
             bucket = self._get_or_create(key)
-            return bucket.wait_seconds
+            return bucket.wait_seconds_for(cost)
 
     def reset(self, key: str) -> None:
         """Reset a user's bucket to full."""
         with self._lock:
             self._buckets.pop(key, None)
+
+    def refund(self, key: str, cost: int = 1) -> None:
+        """Credit *cost* tokens back to the user's bucket (used when a
+        request is queued/rejected without being served)."""
+        with self._lock:
+            bucket = self._get_or_create(key)
+            bucket.refund(cost)
 
     @property
     def active_users(self) -> int:

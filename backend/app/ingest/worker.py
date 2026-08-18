@@ -33,6 +33,7 @@ class BackgroundWorker:
         self._embed_cache = embed_cache or _embed_cache
         self._max_concurrent = max_concurrent
         self._sem: asyncio.Semaphore | None = None
+        self._current_id: str | None = None
 
     @property
     def queue_size(self) -> int:
@@ -66,14 +67,25 @@ class BackgroundWorker:
         while self._running:
             try:
                 upload_id = await asyncio.wait_for(self._queue.get(), timeout=1.0)
-                async with self._sem:
-                    await self._process_job(upload_id)
             except asyncio.TimeoutError:
+                self._job_manager.clean_old_jobs(max_age_hours=24)
                 continue
             except asyncio.CancelledError:
-                break
+                raise
+            self._current_id = upload_id
+            try:
+                async with self._sem:
+                    await self._process_job(upload_id)
+            except asyncio.CancelledError:
+                # Shutdown mid-job: surface it as failed instead of leaving the
+                # Document stuck in 'processing' forever.
+                if self._current_id:
+                    await self._fail_abandoned(self._current_id)
+                raise
             except Exception as exc:
                 log.exception("Worker loop unhandled error: %s", exc)
+            finally:
+                self._current_id = None
 
     async def _process_job(self, upload_id: str) -> None:
         job = await self._job_manager.get(upload_id)
@@ -112,6 +124,7 @@ class BackgroundWorker:
 
             # Step 1: Extract text
             if job.cancelled:
+                await self._mark_doc_cancelled(doc, db)
                 return
             await self._job_manager.update(
                 upload_id, current_stage="extracting", progress=15
@@ -127,6 +140,7 @@ class BackgroundWorker:
             )
 
             if job.cancelled:
+                await self._mark_doc_cancelled(doc, db)
                 return
 
             # Step 2: Chunk
@@ -154,6 +168,7 @@ class BackgroundWorker:
             )
 
             if job.cancelled:
+                await self._mark_doc_cancelled(doc, db)
                 return
 
             # Step 3: Embed with cache
@@ -180,6 +195,7 @@ class BackgroundWorker:
             )
 
             if job.cancelled:
+                await self._mark_doc_cancelled(doc, db)
                 return
 
             # Step 4: Store in Chroma
@@ -193,10 +209,27 @@ class BackgroundWorker:
             doc_id = str(doc.id) if doc else job.document_id
             from app.ingest.store import add_chunks_with_embeddings
 
-            await asyncio.wait_for(
-                asyncio.to_thread(add_chunks_with_embeddings, doc_id, doc_title, chunks, embeddings),
-                timeout=30.0,
+            # Document-level metadata (academic scheme, programme, semester,
+            # document type, etc.) is carried into every chunk so retrieval
+            # can filter by it. sync_source_id is job plumbing, not content.
+            doc_meta = {
+                k: v
+                for k, v in (job.metadata or {}).items()
+                if k in (
+                    "academic_scheme", "programme", "department", "batch",
+                    "semester", "document_type", "category",
+                    "college_id", "college_name", "scope", "source_kind",
+                )
+            }
+
+            # A Chroma store on a large document can legitimately exceed 30s;
+            # bounding it with asyncio.wait_for cancelled (and abandoned) the
+            # underlying thread, then reported a late, silent double write.
+            # The semaphore (max_concurrent) already bounds parallelism.
+            stored_chunks = await asyncio.to_thread(
+                add_chunks_with_embeddings, doc_id, doc_title, chunks, embeddings, doc_meta,
             )
+            stored_chunks = stored_chunks or len(chunks)
             store_time = (time.monotonic() - t_store) * 1000
             await self._job_manager.update(
                 upload_id,
@@ -209,7 +242,7 @@ class BackgroundWorker:
             # Update document
             if doc:
                 doc.status = "ready"
-                doc.chunk_count = len(chunks)
+                doc.chunk_count = stored_chunks
                 doc.error = None
                 db.commit()
 
@@ -232,10 +265,17 @@ class BackgroundWorker:
                     )
 
             total_time = (time.monotonic() - t_start) * 1000
+            if job.cancelled:
+                # Race window: cancel landed after the last check but before
+                # completion — never report a cancelled job as completed.
+                await self._job_manager.mark_failed(upload_id, "cancelled")
+                await self._mark_doc_cancelled(doc, db)
+                await self._publish(upload_id, "cancelled", {"error": "cancelled"})
+                return
             await self._job_manager.mark_completed(
                 upload_id,
                 document_id=doc_id,
-                chunks_count=len(chunks),
+                chunks_count=stored_chunks,
                 metrics={
                     "upload_time_ms": 0,
                     "chunk_time_ms": chunk_time,
@@ -283,6 +323,50 @@ class BackgroundWorker:
                 except Exception:
                     pass
                 db.close()
+
+    async def _fail_abandoned(self, upload_id: str) -> None:
+        """Mark a job (and its Document) as failed when the worker is torn
+        down mid-processing — never leave the row stuck in 'processing'."""
+        try:
+            await self._job_manager.mark_failed(
+                upload_id, "Worker stopped during processing"
+            )
+            await self._publish(
+                upload_id, "failed", {"error": "Worker stopped during processing"}
+            )
+        except Exception:
+            pass
+        try:
+            from app.database import SessionLocal
+            from app.models import Document
+
+            job = await self._job_manager.get(upload_id)
+            if not job:
+                return
+            db = SessionLocal()
+            try:
+                doc = db.query(Document).filter(Document.id == job.document_id).first()
+                if doc and doc.status == "processing":
+                    doc.status = "failed"
+                    doc.error = "Worker stopped during processing"
+                    db.commit()
+            finally:
+                db.close()
+        except Exception:
+            pass
+
+    async def _mark_doc_cancelled(self, doc, db) -> None:
+        """Surface an abandoned/cancelled job on the Document row instead of
+        leaving it stuck in 'processing' (or worse, reporting 'ready')."""
+        if not doc:
+            return
+        try:
+            doc.status = "failed"
+            doc.error = "Job cancelled before completion"
+            if db:
+                db.commit()
+        except Exception:
+            pass
 
     async def _publish(self, upload_id: str, event: str, data: dict) -> None:
         try:

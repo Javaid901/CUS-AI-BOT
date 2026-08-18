@@ -1,0 +1,30 @@
+{
+  "enabled": false,
+  "hours": 0,
+  "last_counts": {
+    "archived_pages": 0,
+    "duplicates_skipped": 0,
+    "error": "INVALID_SOURCE: https://www.cusrinagar.edu.in is a loopback/private target (refused by SSRF guard) or could not be resolved",
+    "failed_pages": 0,
+    "indexed_pages": 0,
+    "new_pages": 0,
+    "pages_found": 0,
+    "status": "failed",
+    "total_urls": 0,
+    "trigger": "manual",
+    "unchanged_pages": 0,
+    "updated_pages": 0
+  },
+  "last_run_at": "2026-08-18T03:55:41.832631",
+  "next_run_at": null,
+  "runtime": {
+    "message": "Sync failed: INVALID_SOURCE: https://www.cusrinagar.edu.in is a loopback/private target (refused by SSRF guard) or could not be resolved",
+    "progress": {
+      "current": 0,
+      "phase": "error",
+      "total": null
+    },
+    "state": "Error"
+  },
+  "schedule": "disabled"
+}

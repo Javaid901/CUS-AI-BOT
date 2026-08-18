@@ -27,41 +27,9 @@ from sqlalchemy import (
     Text,
     UniqueConstraint,
 )
-from sqlalchemy.dialects.postgresql import UUID as PG_UUID
 from sqlalchemy.orm import relationship
-from sqlalchemy.types import CHAR, TypeDecorator
 
-from app.database import Base, utcnow
-
-
-class _UUID(TypeDecorator):
-    """Cross-database UUID type: native UUID on Postgres, CHAR(32) hex on SQLite."""
-
-    impl = CHAR
-    cache_ok = True
-
-    def __init__(self, as_uuid: bool = True, length: int = 32, **kwargs):
-        self._as_uuid = as_uuid
-        super().__init__(length=length, **kwargs)
-
-    def load_dialect_impl(self, dialect):
-        if dialect.name == "postgresql":
-            return dialect.type_descriptor(PG_UUID(as_uuid=True))
-        return dialect.type_descriptor(CHAR(32))
-
-    def process_bind_param(self, value, dialect):
-        if value is None:
-            return value
-        if dialect.name == "postgresql":
-            return value
-        return value.hex if isinstance(value, uuid.UUID) else str(value).replace("-", "")
-
-    def process_result_value(self, value, dialect):
-        if value is None:
-            return value
-        if dialect.name == "postgresql":
-            return value
-        return uuid.UUID(value)
+from app.database import Base, _UUID, utcnow
 
 
 class User(Base):
@@ -71,13 +39,29 @@ class User(Base):
     username = Column(String(64), unique=True, index=True, nullable=False)
     email = Column(String(255), unique=True, index=True, nullable=True)
     hashed_password = Column(String(255), nullable=False)
-    role = Column(String(20), nullable=False, default="student")  # admin | superadmin | student
+    role = Column(String(20), nullable=False, default="student")  # student | admin | authority_admin | superadmin
     is_active = Column(Boolean, default=True, nullable=False)
     created_at = Column(DateTime(timezone=True), default=utcnow, nullable=False)
     last_login = Column(DateTime(timezone=True), nullable=True)
+    # ----- Authority scope (Authority Admin accounts) -----
+    # An Authority Admin is bound to exactly one authority. Super Admin derives
+    # the effective scope from this column in the DB — never from the request.
+    authority_id = Column(
+        String(36),
+        ForeignKey("authorities.id", ondelete="SET NULL"),
+        nullable=True,
+        index=True,
+    )
+    # ----- Profile -----
+    full_name = Column(String(120), nullable=True)
+    designation = Column(String(120), nullable=True)
+    phone = Column(String(30), nullable=True)
+    avatar_path = Column(String(255), nullable=True)  # relative path under /api/uploads
+    updated_at = Column(DateTime(timezone=True), default=utcnow, onupdate=utcnow, nullable=False)
 
     documents = relationship("Document", back_populates="owner", cascade="all, delete-orphan")
     refresh_tokens = relationship("RefreshToken", back_populates="user", cascade="all, delete-orphan")
+    authority = relationship("Authority", foreign_keys=[authority_id])
 
 
 class RefreshToken(Base):
@@ -109,6 +93,19 @@ class Document(Base):
     chunk_count = Column(Integer, default=0, nullable=False)
     error = Column(Text, nullable=True)
     language = Column(String(10), nullable=True)
+    # ----- Content metadata (enables scheme/semester-aware RAG filtering) -----
+    academic_scheme = Column(String(20), nullable=True)   # cbcs | nep | nep2020
+    programme = Column(String(50), nullable=True)         # e.g. "bca"
+    department = Column(String(200), nullable=True)
+    batch = Column(String(20), nullable=True)             # e.g. "2023-2026"
+    semester = Column(String(10), nullable=True)          # e.g. "4"
+    document_type = Column(String(50), nullable=True)     # syllabus | prospectus | fee_sheet | regulation | notice | exam_scheme
+    category = Column(String(50), nullable=True)          # e.g. "nep2020"
+    # ----- College-scoped knowledge source columns -----
+    college_id = Column(String(64), nullable=True, index=True)    # college slug, e.g. "amar-singh-college"
+    college_name = Column(String(255), nullable=True)            # display name of the owning college
+    scope = Column(String(20), nullable=False, default="university", index=True)  # university | college
+    source_kind = Column(String(20), nullable=True)             # upload | manual | url | backfill
     created_at = Column(DateTime(timezone=True), default=utcnow, nullable=False)
     updated_at = Column(DateTime(timezone=True), default=utcnow, onupdate=utcnow, nullable=False)
 
@@ -190,6 +187,7 @@ class Student(Base):
     phone = Column(String(20), nullable=True)
     college = Column(String(200), nullable=True)
     programme = Column(String(50), nullable=False)
+    academic_scheme = Column(String(20), nullable=True)  # cbcs | nep | nep2020
     current_semester = Column(Integer, nullable=False, default=1)
     admission_year = Column(Integer, nullable=False)
     batch = Column(String(20), nullable=True)

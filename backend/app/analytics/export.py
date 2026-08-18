@@ -128,7 +128,7 @@ def export_pdf(title: str, sections: list[dict[str, Any]]) -> bytes:
     try:
         from reportlab.lib import colors
         from reportlab.lib.pagesizes import A4
-        from reportlab.lib.styles import ParagraphStyle, getSampleStyleSheet
+        from reportlab.lib.styles import getSampleStyleSheet
         from reportlab.lib.units import inch
         from reportlab.platypus import (
             Paragraph,

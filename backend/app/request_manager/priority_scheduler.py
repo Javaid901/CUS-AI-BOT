@@ -85,9 +85,9 @@ def _is_simple_programme_query(text: str) -> bool:
              "ma", "msc", "mcom", "mba", "mca", "med", "phd",
              "ba.", "b.sc", "b.com", "b.tech", "m.sc", "m.com"}
     words = text.strip().lower().rstrip("?.,!;:").split()
-    if len(words) == 1 and words[0] in known:
+    if len(words) == 1 and words[0].rstrip(".") in {x.rstrip(".") for x in known}:
         return True
-    return bool(len(words) == 1 and words[0].rstrip(".") in {x.rstrip(".") for x in known})
+    return False
 
 
 def _is_greeting_or_reset(text: str) -> bool:
@@ -187,6 +187,7 @@ def _from_planner_action(action: str) -> Classification:
     mapping = {
         "welcome": (Priority.STRUCTURED, RequestCost.STRUCTURED, True, 300),
         "structured": (Priority.STRUCTURED, RequestCost.STRUCTURED, True, 300),
+        "catalogue": (Priority.STRUCTURED, RequestCost.STRUCTURED, True, 300),
         "navigation": (Priority.NAVIGATION, RequestCost.NAVIGATION, False, 0),
         "connector": (Priority.STUDENT_SERVICE, RequestCost.STUDENT_SERVICE, False, 0),
         "rag": (Priority.RAG, RequestCost.RAG, False, 0),

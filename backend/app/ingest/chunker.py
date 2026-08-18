@@ -106,7 +106,6 @@ def chunk_pages(pages: list[dict[str, Any]]) -> list[dict[str, Any]]:
     """
     size = max(100, settings.CHUNK_SIZE)
     overlap = max(0, min(settings.CHUNK_OVERLAP, size - 1))
-    size - overlap
     out: list[dict[str, Any]] = []
     idx = 0
 

@@ -122,3 +122,42 @@ def require_role(*roles: str):
 
 require_admin = require_role("admin", "superadmin")
 require_superadmin = require_role("superadmin")
+require_authority_admin = require_role("authority_admin")
+
+
+def require_authenticated_user(current: User = Depends(get_current_user)) -> User:
+    """Any logged-in, active account (student / admin / authority_admin / superadmin)."""
+    return current
+
+
+def require_authority_scope(authority_id: str):
+    """Reject access to another authority's resources.
+
+    The effective scope is ALWAYS derived from the authenticated user, never
+    from query/path/body parameters:
+
+      * superadmin  -> global scope (override)
+      * authority_admin -> the single authority in users.authority_id
+      * anyone else -> 403
+
+    Usage: `current: User = Depends(require_authority_scope(body.authority_id))`
+    raises 403 for any scope mismatch — the guard never exposes the other
+    authority's data.
+    """
+
+    def dependency(current: User = Depends(get_current_user)) -> User:
+        if current.role == "superadmin":
+            return current
+        if current.role == "authority_admin":
+            if not current.authority_id or str(current.authority_id) != authority_id:
+                raise HTTPException(
+                    status_code=status.HTTP_403_FORBIDDEN,
+                    detail="Not authorized for this authority",
+                )
+            return current
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Insufficient privileges",
+        )
+
+    return dependency

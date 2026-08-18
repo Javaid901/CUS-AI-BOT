@@ -354,6 +354,8 @@ def analytics_export(
         get_college_analytics,
         get_conversation_analytics,
         get_course_analytics,
+        get_knowledge_gaps,
+        get_knowledge_insights,
         get_overview,
         get_performance_analytics,
         get_query_analytics,
@@ -381,6 +383,10 @@ def analytics_export(
         report_data = get_performance_analytics(period)
     elif report == "insights":
         report_data = generate_insights()
+    elif report == "knowledge":
+        report_data = get_knowledge_insights()
+    elif report == "gaps":
+        report_data = {"gaps": get_knowledge_gaps(limit=50)}
     else:
         raise HTTPException(status_code=400, detail=f"Unknown report: {report}")
 

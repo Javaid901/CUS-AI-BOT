@@ -15,7 +15,27 @@ from app.analytics.models import (
 )
 
 # Authority model
-from app.authority.models import Authority
+from app.authority.models import Authority, GrievanceCategory
+
+# Grievance models — re-exported for convenience and registered on metadata
+from app.grievance.models import (
+    Grievance,
+    GrievanceAttachment,
+    GrievanceNotification,
+    GrievanceStatusHistory,
+)
+
+# Academic catalogue models — imported to register on Base.metadata
+from app.catalogue.models import (
+    AcademicScheme,
+    CurriculumDocument,
+    LearningOutcome,
+    MinorDiscipline,
+    Programme,
+    ProgrammeCategory,
+    ProgrammeSubject,
+)
+
 from app.models.db_models import (
     AuditLog,
     Conversation,
@@ -44,8 +64,10 @@ from app.models.demo_models import (
     XeroxRequest,
 )
 from app.models.sync_source import SyncSource
+from app.models.website_sync import CrawlRun, WebsitePage, WebsitePageVersion
 
 __all__ = [
+    "AcademicScheme",
     "AggregatedMetric",
     "AnalyticsSession",
     "AuditLog",
@@ -55,16 +77,28 @@ __all__ = [
     "BacklogStatus",
     "Conversation",
     "CourseRegistration",
+    "CurriculumDocument",
     "Document",
     "DocumentChunk",
     "FeeReceipt",
+    # Grievances
+    "Grievance",
+    "GrievanceAttachment",
+    "GrievanceCategory",
+    "GrievanceNotification",
+    "GrievanceStatusHistory",
     "HelpdeskTicket",
     # Analytics
     "InteractionEvent",
     "KnowledgeGap",
+    "LearningOutcome",
     "Message",
     "MigrationCertificate",
+    "MinorDiscipline",
     "PerformanceSample",
+    "Programme",
+    "ProgrammeCategory",
+    "ProgrammeSubject",
     "RefreshToken",
     "Revaluation",
     "Student",
@@ -76,5 +110,8 @@ __all__ = [
     "StudentTranscript",
     "SyncSource",
     "User",
+    "WebsitePage",
+    "WebsitePageVersion",
+    "CrawlRun",
     "XeroxRequest",
 ]

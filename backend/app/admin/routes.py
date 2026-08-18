@@ -14,8 +14,6 @@ Admin document management.
   GET    /api/admin/jobs/{upload_id}/events   -> SSE stream for job progress
   GET    /api/admin/jobs/events               -> SSE stream for all jobs
   GET    /api/admin/logs                      -> recent audit logs
-  POST   /api/admin/sync-website              -> sync official website documents
-  GET    /api/admin/kb-stats                  -> knowledge base statistics
   GET    /api/admin/kb-health                 -> knowledge base health check
   GET    /api/admin/metrics/ingestion         -> ingestion performance metrics
 
@@ -27,7 +25,7 @@ from __future__ import annotations
 
 import uuid
 
-from app.auth.security import require_admin
+from app.auth.security import require_admin, require_superadmin
 from app.config import settings
 from app.database import get_db
 from app.ingest.job_manager import job_manager
@@ -38,8 +36,9 @@ from app.ingest.worker import worker
 from app.models import AuditLog, Conversation, Document, User
 from app.utils.files import validate_upload
 from app.utils.logging import audit
-from fastapi import APIRouter, Depends, File, HTTPException, Query, UploadFile
+from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, UploadFile
 from fastapi.responses import JSONResponse, StreamingResponse
+from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
 router = APIRouter(tags=["admin"])
@@ -58,6 +57,13 @@ def _doc_view(doc: Document) -> dict:
         "file_size": doc.file_size,
         "created_at": doc.created_at.isoformat() if doc.created_at else None,
         "error": doc.error,
+        "academic_scheme": doc.academic_scheme,
+        "programme": doc.programme,
+        "department": doc.department,
+        "batch": doc.batch,
+        "semester": doc.semester,
+        "document_type": doc.document_type,
+        "category": doc.category,
     }
 
 
@@ -74,6 +80,13 @@ def list_documents(
 @router.post(f"{settings.API_PREFIX}/documents/upload")
 async def upload_document(
     file: UploadFile = File(...),
+    academic_scheme: str | None = Form(None),
+    programme: str | None = Form(None),
+    department: str | None = Form(None),
+    batch: str | None = Form(None),
+    semester: str | None = Form(None),
+    document_type: str | None = Form(None),
+    category: str | None = Form(None),
     db: Session = Depends(get_db),
     current: User = _protected,
 ):
@@ -83,9 +96,18 @@ async def upload_document(
     except HTTPException as exc:
         audit(db, "upload_rejected", actor_id=str(current.id), actor_role=current.role, target=file.filename, detail=exc.detail)
         raise
+    metadata = {
+        "academic_scheme": academic_scheme,
+        "programme": programme,
+        "department": department,
+        "batch": batch,
+        "semester": semester,
+        "document_type": document_type,
+        "category": category,
+    }
     try:
         result = await submit_upload_job(
-            db, current.id, file.filename, data, title=file.filename
+            db, current.id, file.filename, data, title=file.filename, metadata=metadata
         )
     except Exception as exc:
         audit(db, "upload_failed", actor_id=str(current.id), actor_role=current.role, target=file.filename, detail=str(exc)[:300])
@@ -163,6 +185,15 @@ async def reindex_document(
         result = await submit_upload_job(
             db, current.id, doc.original_filename or doc.filename, data,
             title=doc.title, existing_doc_id=doc_id,
+            metadata={
+                "academic_scheme": doc.academic_scheme,
+                "programme": doc.programme,
+                "department": doc.department,
+                "batch": doc.batch,
+                "semester": doc.semester,
+                "document_type": doc.document_type,
+                "category": doc.category,
+            },
         )
     except Exception as exc:
         audit(db, "reindex_failed", actor_id=str(current.id), actor_role=current.role, target=doc_id, detail=str(exc)[:300])
@@ -192,29 +223,6 @@ def list_logs(
     ]
 
 
-@router.post(f"{settings.API_PREFIX}/admin/sync-website")
-def sync_website(
-    db: Session = Depends(get_db),
-    current: User = _protected,
-):
-    """Sync official CUS website documents into the knowledge base."""
-    from app.ingest.knowledge_base import sync_all
-
-    result = sync_all()
-    audit(db, "sync", actor_id=str(current.id), actor_role=current.role, detail=f"Downloaded {result.get('downloaded', 0)} files")
-    return result
-
-
-@router.get(f"{settings.API_PREFIX}/admin/kb-stats")
-def kb_stats(
-    current: User = _protected,
-):
-    """Knowledge base statistics."""
-    from app.ingest.knowledge_base import get_knowledge_stats
-
-    return get_knowledge_stats()
-
-
 @router.get(f"{settings.API_PREFIX}/admin/kb-health")
 def kb_health(
     db: Session = Depends(get_db),
@@ -222,7 +230,6 @@ def kb_health(
 ):
     """Knowledge base health check — counts, model info, DB size."""
     from app.ingest.generator import is_ollama_available, list_models
-    from app.ingest.knowledge_base import get_knowledge_stats
     from sqlalchemy import func
 
     doc_count = db.query(Document).count()
@@ -230,7 +237,9 @@ def kb_health(
     chunk_count = chunk_count_row[0] or 0 if chunk_count_row else 0
     conv_count = db.query(Conversation).count()
 
-    kb = get_knowledge_stats()
+    from app.knowledge_sync.web_engine import WebsiteSyncEngine
+
+    ws = WebsiteSyncEngine(db).get_status()
     ollama_ok = is_ollama_available()
 
     return {
@@ -238,7 +247,11 @@ def kb_health(
         "documents": {"total": doc_count, "ready": db.query(Document).filter(Document.status == "ready").count()},
         "chunks": chunk_count,
         "conversations": conv_count,
-        "knowledge_base": kb,
+        "knowledge_base": {
+            "total_files": ws.get("indexed_pages", 0),
+            "total_pages": ws.get("total_pages", 0),
+            "categories": ws.get("categories", {}),
+        },
         "ollama": {"reachable": ollama_ok, "models": list_models() if ollama_ok else [], "llm": settings.LLM_MODEL, "embed": settings.EMBED_MODEL},
         "db_size_bytes": _db_size(),
     }
@@ -418,65 +431,161 @@ async def operations_metrics(
 
 
 # ---------------------------------------------------------------------------
-# Knowledge Sync endpoints (admin-only document acquisition)
+# Website Knowledge Sync endpoints (enterprise crawler engine)
 # ---------------------------------------------------------------------------
 
-@router.post(f"{settings.API_PREFIX}/admin/knowledge-sync/run")
-async def knowledge_sync_run(
+
+class WebsiteSyncToggle(BaseModel):
+    enabled: bool | None = None
+    schedule: str | None = None  # disabled | manual | hourly | daily | weekly | monthly
+
+
+class WebsiteSyncManualRun(BaseModel):
+    urls: list[str] | None = None
+    trigger: str = "manual"
+
+
+@router.post(f"{settings.API_PREFIX}/admin/website-sync/run")
+async def website_sync_run(
+    body: WebsiteSyncManualRun | None = None,
     db: Session = Depends(get_db),
     current: User = _protected,
-    urls: str | None = Query(None, description="Comma-separated URLs to sync"),
-    auto_discover: bool = Query(False, description="Crawl approved domains for documents"),
 ):
-    """Run Knowledge Sync: download approved documents and ingest via background pipeline."""
-    from app.knowledge_sync.engine import SyncEngine
+    """Run a full (or URL-scoped) website sync pass."""
+    from app.knowledge_sync.web_engine import WebsiteSyncEngine
 
-    engine = SyncEngine(db)
-    url_list = [u.strip() for u in urls.split(",") if u.strip()] if urls else None
-    result = await engine.run_async(url_list, auto_discover=auto_discover)
-    audit(db, "knowledge_sync", actor_id=str(current.id), actor_role=current.role, detail=f"Downloaded {result.get('downloaded', 0)} files")
+    engine = WebsiteSyncEngine(db)
+    result = await engine.run_async(
+        trigger=(body.trigger if body else "manual"),
+        seed_urls=(body.urls if body else None),
+    )
+    audit(db, "website_sync", actor_id=str(current.id), actor_role=current.role,
+          detail=f"{result.get('status')} · {result.get('new_pages', 0)} new, "
+                 f"{result.get('updated_pages', 0)} updated")
     return result
 
 
-@router.get(f"{settings.API_PREFIX}/admin/knowledge-sync/status")
-def knowledge_sync_status(
+@router.get(f"{settings.API_PREFIX}/admin/website-sync/status")
+def website_sync_status(
     db: Session = Depends(get_db),
     current: User = _protected,
 ):
-    """Get Knowledge Sync status and stats."""
-    from app.knowledge_sync.engine import SyncEngine
+    """Dashboard status: toggle state, counts, category breakdown, last run."""
+    from app.knowledge_sync.web_engine import WebsiteSyncEngine
 
-    engine = SyncEngine(db)
-    return engine.get_status()
+    return WebsiteSyncEngine(db).get_status()
 
 
-@router.get(f"{settings.API_PREFIX}/admin/knowledge-sync/sources")
-def knowledge_sync_sources(
+@router.post(f"{settings.API_PREFIX}/admin/website-sync/toggle")
+def website_sync_toggle(
+    body: WebsiteSyncToggle,
     db: Session = Depends(get_db),
     current: User = _protected,
+):
+    """Enable/disable scheduled sync and set cadence."""
+    from app.knowledge_sync.web_engine import SCHEDULE_HOURS, load_state, save_state
+
+    state = load_state()
+    if body.enabled is not None:
+        state["enabled"] = body.enabled
+    if body.schedule:
+        if body.schedule not in SCHEDULE_HOURS:
+            raise HTTPException(status_code=422, detail=f"Unknown schedule '{body.schedule}'")
+        state["schedule"] = body.schedule
+        state["hours"] = SCHEDULE_HOURS[body.schedule]
+    save_state(state)
+    audit(db, "website_sync_toggle", actor_id=str(current.id), actor_role=current.role,
+          detail=f"enabled={state['enabled']} schedule={state['schedule']}")
+    return state
+
+
+@router.get(f"{settings.API_PREFIX}/admin/website-sync/pages")
+def website_sync_pages(
+    db: Session = Depends(get_db),
+    current: User = _protected,
+    category: str | None = Query(None),
     status: str | None = Query(None),
+    q: str | None = Query(None),
     limit: int = Query(100, ge=1, le=500),
+    offset: int = Query(0, ge=0),
 ):
-    """List synced sources with optional status filter."""
-    from app.knowledge_sync.engine import SyncEngine
+    """List crawled pages with filters (category / status / search)."""
+    from app.knowledge_sync.web_engine import WebsiteSyncEngine
 
-    engine = SyncEngine(db)
-    return engine.list_sources(status=status, limit=limit)
+    return WebsiteSyncEngine(db).list_pages(
+        category=category, status=status, q=q, limit=limit, offset=offset
+    )
 
 
-@router.post(f"{settings.API_PREFIX}/admin/knowledge-sync/approve/{{sync_id}}")
-def knowledge_sync_approve(
-    sync_id: str,
+@router.get(f"{settings.API_PREFIX}/admin/website-sync/pages/{{page_id}}")
+def website_sync_page_detail(
+    page_id: str,
     db: Session = Depends(get_db),
     current: User = _protected,
 ):
-    """Approve a synced file for ingestion (review mode)."""
-    from app.knowledge_sync.engine import SyncEngine
+    """Page detail incl. version history."""
+    from app.models.website_sync import WebsitePage
+    from app.knowledge_sync.web_engine import WebsiteSyncEngine
 
-    engine = SyncEngine(db)
-    result = engine.approve_for_ingestion(sync_id)
-    audit(db, "knowledge_sync_approve", actor_id=str(current.id), actor_role=current.role, target=sync_id, detail=result.get("status"))
+    page = db.get(WebsitePage, page_id)
+    if not page:
+        raise HTTPException(status_code=404, detail="Page not found")
+    data = page.to_dict()
+    data["versions"] = WebsiteSyncEngine(db).list_versions(page_id)
+    return data
+
+
+@router.get(f"{settings.API_PREFIX}/admin/website-sync/runs")
+def website_sync_runs(
+    db: Session = Depends(get_db),
+    current: User = _protected,
+    limit: int = Query(25, ge=1, le=200),
+):
+    """List recent crawl runs (dashboard history table)."""
+    from app.knowledge_sync.web_engine import WebsiteSyncEngine
+
+    return WebsiteSyncEngine(db).list_runs(limit=limit)
+
+
+@router.post(f"{settings.API_PREFIX}/admin/website-sync/pages/{{page_id}}/reindex")
+def website_sync_reindex(
+    page_id: str,
+    db: Session = Depends(get_db),
+    current: User = _protected,
+):
+    """Re-index a page's content into the RAG store."""
+    from app.knowledge_sync.web_engine import WebsiteSyncEngine
+
+    result = WebsiteSyncEngine(db).reindex_page(page_id)
+    audit(db, "website_sync_reindex", actor_id=str(current.id), actor_role=current.role,
+          target=page_id, detail=str(result.get("indexed")))
     return result
+
+
+@router.delete(f"{settings.API_PREFIX}/admin/website-sync/pages/{{page_id}}")
+def website_sync_archive(
+    page_id: str,
+    db: Session = Depends(get_db),
+    current: User = _protected,
+):
+    """Archive a page (versioned snapshot; never hard-deleted)."""
+    from app.knowledge_sync.web_engine import WebsiteSyncEngine
+
+    result = WebsiteSyncEngine(db).archive_page(page_id)
+    audit(db, "website_sync_archive", actor_id=str(current.id), actor_role=current.role,
+          target=page_id, detail=result.get("status"))
+    return result
+
+
+@router.get(f"{settings.API_PREFIX}/admin/website-sync/duplicates")
+def website_sync_duplicates(
+    db: Session = Depends(get_db),
+    current: User = _protected,
+):
+    """Scan pages sharing identical content hashes (duplicate detection report)."""
+    from app.knowledge_sync.web_engine import WebsiteSyncEngine
+
+    return WebsiteSyncEngine(db).scan_duplicates()
 
 
 # ---------------------------------------------------------------------------
@@ -714,3 +823,91 @@ def delete_demo_students(db: Session = Depends(get_db), current=Depends(require_
     db.query(Student).delete()
     db.commit()
     return {"message": "All demo students and their service data have been deleted."}
+
+
+# ---------------------------------------------------------------------------
+# Email health (Super Admin only). Never exposes credentials or secrets.
+# ---------------------------------------------------------------------------
+
+@router.get("/api/admin/email/health")
+def email_health(current: User = Depends(require_superadmin)):
+    """Super-Admin email health check: configuration + live SMTP connectivity.
+
+    Returns provider/port/TLS booleans and a connection probe result only —
+    no usernames, passwords or secrets of any kind.
+    """
+    import smtplib
+
+    configured = bool(settings.EMAIL_ENABLED and settings.SMTP_HOST)
+    connection = "not_configured"
+    if configured:
+        smtp = None
+        try:
+            smtp = smtplib.SMTP(settings.SMTP_HOST, settings.SMTP_PORT, timeout=5)
+            smtp.ehlo()
+            connection = "ok"
+        except Exception:
+            connection = "unreachable"
+        finally:
+            if smtp is not None:
+                try:
+                    smtp.quit()
+                except Exception:
+                    pass
+    return {
+        "configured": configured,
+        "provider": "smtp" if configured else "none",
+        "smtp_host_configured": bool(settings.SMTP_HOST),
+        "smtp_port": settings.SMTP_PORT,
+        "starttls": bool(settings.SMTP_STARTTLS),
+        "mail_from_configured": bool(settings.MAIL_FROM),
+        "email_enabled": bool(settings.EMAIL_ENABLED),
+        "connection": connection,
+        "note": (
+            "SMTP delivery is synchronous and best-effort: grievances never "
+            "fail when mail does. See backend/.env EMAIL_* keys."
+            if not configured else
+            "SMTP probe accepted the connection; a full send is verified with "
+            "POST /api/admin/email/test."
+        ),
+    }
+
+
+class _TestEmailRequest(BaseModel):
+    to_email: str
+
+
+@router.post("/api/admin/email/test")
+def email_test(
+    body: _TestEmailRequest,
+    current: User = Depends(require_superadmin),
+):
+    """Super-Admin test message to an explicitly supplied address.
+
+    Validates the address format, reuses the production sender, and reports
+    acceptance honestly (never "sent" unless the provider accepted it).
+    """
+    import re
+
+    from app.utils.email import send_test_email
+
+    to_email = (body.to_email or "").strip().lower()
+    if not re.match(r"^[^@\s]+@[^@\s]+\.[^@\s]+$", to_email):
+        raise HTTPException(status_code=422, detail="A valid recipient email is required")
+    if len(to_email) > 200:
+        raise HTTPException(status_code=422, detail="Recipient email is too long")
+    configured = bool(settings.EMAIL_ENABLED and settings.SMTP_HOST)
+    accepted = send_test_email(to_email) if configured else False
+    return {
+        "configured": configured,
+        "accepted": accepted,
+        "recipient": to_email,
+        "provider": "smtp" if configured else "none",
+        "detail": (
+            "Message accepted by the SMTP server."
+            if accepted else
+            "Email service is not configured (no message sent)."
+            if not configured else
+            "The SMTP server did not accept the message."
+        ),
+    }

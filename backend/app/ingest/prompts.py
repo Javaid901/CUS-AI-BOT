@@ -14,6 +14,8 @@ Design goals:
 
 from __future__ import annotations
 
+import re
+
 SYSTEM_PROMPT = (
     "You are CUS AI Assistant, the official help desk for Cluster University Srinagar. "
     "Answer ONLY using the provided knowledge-base excerpts. "
@@ -51,13 +53,31 @@ CONTEXT_TEMPLATE = (
 FALLBACK_MESSAGE = "I couldn't find this information in the Cluster University Srinagar knowledge base."
 
 
+def display_title(title: str) -> str:
+    """Human-readable document label for prompts and citations.
+
+    Stored titles are raw filenames ("7affc4405141_84e0ab6e600b_CUS_
+    Complete_Knowledge_Base.pdf"). Strip the extension and any
+    downloaded-file id prefix so neither the LLM citations nor the chat
+    UI expose raw artifact names.
+    """
+    t = (title or "").strip()
+    if not t:
+        return "Document"
+    t = re.sub(r"\.(pdf|docx?|txt|csv|xlsx?)$", "", t, flags=re.I)
+    t = re.sub(r"^[0-9a-fA-F]+(?:_[0-9a-fA-F]+)*_(?=[A-Za-z])", "", t)
+    t = re.sub(r"(?<=[a-z])(?=[A-Z])", " ", t)
+    t = t.replace("_", " ").strip()
+    return t or "Document"
+
+
 def format_context(chunks: list[dict]) -> str:
     """Render retrieved chunks into a structured context block grouped by document."""
     from collections import OrderedDict
 
     groups: OrderedDict[str, list[dict]] = OrderedDict()
     for c in chunks:
-        title = c.get("document_title") or c.get("source") or "Document"
+        title = display_title(c.get("document_title") or c.get("source") or "Document")
         groups.setdefault(title, []).append(c)
 
     parts = []
@@ -81,7 +101,7 @@ def format_context_flat(chunks: list[dict]) -> str:
     """Original flat format (backward compatibility)."""
     parts = []
     for i, c in enumerate(chunks, start=1):
-        title = c.get("document_title") or c.get("source") or "Document"
+        title = display_title(c.get("document_title") or c.get("source") or "Document")
         page = c.get("page_number")
         heading = c.get("heading") or ""
         loc = f" (page {page})" if page else ""

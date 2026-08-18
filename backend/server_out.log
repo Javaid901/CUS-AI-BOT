@@ -1,0 +1,21 @@
+2026-08-10T17:53:57 | INFO     | cus_ai | Embedding cache loaded (236 entries)
+2026-08-10T17:53:58 | INFO     | cus_ai | Starting CUS AI Assistant (env=development)
+2026-08-10T17:54:01 | INFO     | cus_ai | Academic catalogue seeded with 9 programmes
+2026-08-10T17:54:05 | INFO     | cus_ai | Embed model 'nomic-embed-text' warmed up
+2026-08-10T17:54:13 | INFO     | cus_ai | LLM model 'llama3.2:1b' warmed up
+2026-08-10T17:54:13 | INFO     | cus_ai | Analytics scheduler started (agg=3600s, cleanup=86400s, insight=7200s)
+2026-08-10T17:54:13 | INFO     | cus_ai | Analytics background scheduler started
+2026-08-10T17:54:13 | INFO     | cus_ai | Intent centroids loaded from cache (13 intents)
+2026-08-10T17:54:13 | INFO     | cus_ai | Website Sync scheduler started (poll 60s)
+2026-08-10T17:54:13 | INFO     | cus_ai | Website Sync scheduler thread started
+2026-08-10T17:54:13 | INFO     | cus_ai | Intent centroids ready from cache (13 intents) in 0.38s
+2026-08-10T17:54:13 | INFO     | cus_ai | Intent classifier warmed up
+2026-08-10T17:54:13 | INFO     | cus_ai | Background ingestion worker started
+2026-08-10T17:54:13 | INFO     | cus_ai | Request queue worker started
+2026-08-10T17:54:13 | INFO     | cus_ai | Authority cache loaded (15 offices)
+2026-08-10T17:54:13 | INFO     | cus_ai | Analytics module initialized
+2026-08-10T17:54:13 | INFO     | cus_ai | Background worker started (max_concurrent=2)
+2026-08-10T17:54:13 | INFO     | cus_ai | Worker pool starting (min=1, max=6)
+2026-08-10T17:54:14 | INFO     | cus_ai | Analytics aggregation completed in 0.32s: {'aggregated': {'daily': 1, 'weekly': 1, 'monthly': 1, 'yearly': 1}}
+2026-08-10T17:55:14 | INFO     | cus_ai | Generated 30 analytics insights
+INFO:     127.0.0.1:49703 - "GET /api/health HTTP/1.1" 200 OK

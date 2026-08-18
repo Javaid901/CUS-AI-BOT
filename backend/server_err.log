@@ -1,0 +1,5 @@
+SECRET_KEY not configured; generated a random dev key (existing JWT tokens will be invalidated on the next restart).
+INFO:     Started server process [11368]
+INFO:     Waiting for application startup.
+INFO:     Application startup complete.
+INFO:     Uvicorn running on http://0.0.0.0:8001 (Press CTRL+C to quit)

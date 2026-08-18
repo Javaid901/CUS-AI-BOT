@@ -20,6 +20,7 @@ Usage in orchestrator:
 from __future__ import annotations
 
 import asyncio
+import logging
 import time
 from datetime import datetime, timezone
 from typing import Any
@@ -33,6 +34,8 @@ from app.analytics.models import (
     PerformanceSample,
 )
 from app.database import SessionLocal
+
+log = logging.getLogger(__name__)
 
 # ---------------------------------------------------------------------------
 # Background batch queue
@@ -60,33 +63,51 @@ async def _flush_batch() -> None:
         try:
             for ev in events:
                 ev_type = ev.pop("_type", "event")
-                if ev_type == "event":
-                    db.add(InteractionEvent(**ev))
-                elif ev_type == "perf":
-                    db.add(PerformanceSample(**ev))
-                elif ev_type == "gap":
-                    existing = db.query(KnowledgeGap).filter(
-                        KnowledgeGap.query_text == ev.get("query_text"),
-                        KnowledgeGap.gap_type == ev.get("gap_type"),
-                        KnowledgeGap.resolved == False,
-                    ).first()
-                    if existing:
-                        existing.frequency = (existing.frequency or 1) + 1
-                    else:
-                        db.add(KnowledgeGap(**ev))
-                elif ev_type == "session":
-                    existing = db.query(AnalyticsSession).filter(
-                        AnalyticsSession.anon_session_id == ev.get("anon_session_id")
-                    ).first()
-                    if existing:
-                        for k, v in ev.items():
-                            if k != "anon_session_id":
-                                setattr(existing, k, v)
-                    else:
-                        db.add(AnalyticsSession(**ev))
+                try:
+                    if ev_type == "event":
+                        # Filter to declared columns so an unknown payload key
+                        # can never poison the whole batch.
+                        allowed = set(InteractionEvent.__table__.columns.keys())
+                        db.add(InteractionEvent(**{k: v for k, v in ev.items() if k in allowed}))
+                    elif ev_type == "perf":
+                        db.add(PerformanceSample(**ev))
+                    elif ev_type == "gap":
+                        existing = db.query(KnowledgeGap).filter(
+                            KnowledgeGap.query_text == ev.get("query_text"),
+                            KnowledgeGap.gap_type == ev.get("gap_type"),
+                            KnowledgeGap.resolved == False,
+                        ).first()
+                        if existing:
+                            existing.frequency = (existing.frequency or 1) + 1
+                        else:
+                            db.add(KnowledgeGap(**ev))
+                    elif ev_type == "session":
+                        existing = db.query(AnalyticsSession).filter(
+                            AnalyticsSession.anon_session_id == ev.get("anon_session_id")
+                        ).first()
+                        if existing:
+                            # Merge — never clobber previously tracked data.
+                            all_ids = list(existing.conversation_ids or [])
+                            cid = ev.get("conversation_ids") or []
+                            for conv in cid:
+                                if conv and conv not in all_ids:
+                                    all_ids.append(conv)
+                            existing.conversation_ids = all_ids
+                            existing.message_count = (existing.message_count or 0) + (ev.get("message_count") or 0)
+                            if ev.get("last_activity"):
+                                existing.last_activity = ev["last_activity"]
+                            if ev.get("completed"):
+                                existing.completed = True
+                            if ev.get("abandoned"):
+                                existing.abandoned = True
+                        else:
+                            db.add(AnalyticsSession(**ev))
+                except Exception as exc:  # noqa: BLE001 - isolate bad events
+                    log.warning("Analytics event dropped (type=%s): %s", ev_type, exc)
             db.commit()
-        except Exception:
+        except Exception:  # noqa: BLE001 - DB unavailable: drop batch, keep serving
             db.rollback()
+            log.warning("Analytics batch commit failed (%d events dropped)", len(events))
         finally:
             db.close()
 
@@ -123,6 +144,7 @@ async def collect_event(
     conversation_completed: bool = False,
     conversation_abandoned: bool = False,
     service_requested: str | None = None,
+    slot_requested: str | None = None,
     knowledge_sync_used: bool = False,
     rag_used: bool = False,
     structured_lookup_used: bool = False,
@@ -155,6 +177,7 @@ async def collect_event(
         "conversation_completed": conversation_completed,
         "conversation_abandoned": conversation_abandoned,
         "service_requested": service_requested,
+        "slot_requested": slot_requested,
         "knowledge_sync_used": knowledge_sync_used,
         "rag_used": rag_used,
         "structured_lookup_used": structured_lookup_used,

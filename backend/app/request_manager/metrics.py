@@ -52,10 +52,16 @@ class RequestMetrics:
             self._peak_concurrent = max(self._peak_concurrent, self._current_concurrent)
 
     def record_response(self, latency_ms: float, stage: str = "total") -> None:
-        """Record a completed response with its latency."""
+        """Record a completed response with its latency.
+
+        Only the terminal records ("total" for executed work, "cache" for a
+        served cache hit) release the concurrent-slot counter; per-stage
+        records (action, etc.) are pure latency samples.
+        """
         with self._lock:
             self._latencies[stage].append(latency_ms)
-            self._current_concurrent = max(0, self._current_concurrent - 1)
+            if stage in ("total", "cache"):
+                self._current_concurrent = max(0, self._current_concurrent - 1)
 
     def record_429(self) -> None:
         with self._lock:

@@ -56,7 +56,41 @@ def _safe_id(raw: str) -> str:
     return cleaned[:64]
 
 
-def add_chunks(document_id: str, title: str, chunks: list[dict[str, Any]]) -> None:
+# Metadata keys persisted per chunk that enable scheme/semester-aware filtering.
+FILTER_METADATA_KEYS = (
+    "academic_scheme",
+    "programme",
+    "department",
+    "batch",
+    "semester",
+    "document_type",
+    "category",
+    "source_url",
+    "source",
+    "college_id",
+    "college_name",
+    "scope",
+    "source_kind",
+)
+
+
+def _merge_doc_metadata(base: dict[str, Any], extra: dict[str, Any] | None) -> dict[str, Any]:
+    """Merge document-level metadata (scheme, programme, etc.) into chunk metadata."""
+    if not extra:
+        return base
+    merged = dict(base)
+    for key, value in extra.items():
+        if key in FILTER_METADATA_KEYS and value not in (None, ""):
+            merged[key] = str(value)
+    return merged
+
+
+def add_chunks(
+    document_id: str,
+    title: str,
+    chunks: list[dict[str, Any]],
+    extra_metadata: dict[str, Any] | None = None,
+) -> None:
     if not chunks:
         return
     col = get_collection()
@@ -67,14 +101,17 @@ def add_chunks(document_id: str, title: str, chunks: list[dict[str, Any]]) -> No
         docs.append(c["content"])
         heading = c.get("heading") or ""
         metas.append(
-            {
-                "document_id": document_id,
-                "document_title": title,
-                "page_number": int(c.get("page_number") or 0),
-                "chunk_index": int(c.get("chunk_index") or 0),
-                "heading": heading[:200],
-                "sha256": c.get("sha256", ""),
-            }
+            _merge_doc_metadata(
+                {
+                    "document_id": document_id,
+                    "document_title": title,
+                    "page_number": int(c.get("page_number") or 0),
+                    "chunk_index": int(c.get("chunk_index") or 0),
+                    "heading": heading[:200],
+                    "sha256": c.get("sha256", ""),
+                },
+                extra_metadata,
+            )
         )
     col.add(ids=ids, documents=docs, metadatas=metas)
     log.info("Stored %d chunks for document %s", len(ids), document_id)
@@ -85,13 +122,18 @@ def add_chunks_with_embeddings(
     title: str,
     chunks: list[dict[str, Any]],
     embeddings: list[list[float]],
-) -> None:
-    """Store chunks with precomputed embeddings, skipping dupes by sha256."""
+    extra_metadata: dict[str, Any] | None = None,
+) -> int:
+    """Store chunks with precomputed embeddings, skipping dupes by sha256.
+    Returns the number of newly stored chunks."""
     if not chunks or not embeddings:
-        return
+        return 0
     if len(chunks) != len(embeddings):
-        log.error("Chunk/embedding count mismatch: %d vs %d", len(chunks), len(embeddings))
-        return
+        # Silent partial-write here previously dropped data with only a log
+        # line; surface it so the worker marks the job failed.
+        raise ValueError(
+            f"Chunk/embedding count mismatch: {len(chunks)} vs {len(embeddings)}"
+        )
     col = get_collection()
     existing_hashes = _existing_chunk_hashes(embeddings, col)
     ids, docs, metas, embeds_list = [], [], [], []
@@ -106,14 +148,17 @@ def add_chunks_with_embeddings(
         docs.append(c["content"])
         heading = c.get("heading") or ""
         metas.append(
-            {
-                "document_id": document_id,
-                "document_title": title,
-                "page_number": int(c.get("page_number") or 0),
-                "chunk_index": int(c.get("chunk_index") or 0),
-                "heading": heading[:200],
-                "sha256": chunk_sha,
-            }
+            _merge_doc_metadata(
+                {
+                    "document_id": document_id,
+                    "document_title": title,
+                    "page_number": int(c.get("page_number") or 0),
+                    "chunk_index": int(c.get("chunk_index") or 0),
+                    "heading": heading[:200],
+                    "sha256": chunk_sha,
+                },
+                extra_metadata,
+            )
         )
         embeds_list.append(emb)
     if ids:
@@ -121,6 +166,7 @@ def add_chunks_with_embeddings(
     if skipped:
         log.info("Skipped %d duplicate chunks for %s", skipped, document_id)
     log.info("Stored %d chunks for document %s (%d skipped)", len(ids), document_id, skipped)
+    return len(ids)
 
 
 def _existing_chunk_hashes(
@@ -130,7 +176,7 @@ def _existing_chunk_hashes(
     if col is None:
         col = get_collection()
     try:
-        result = col.get(include=["metadatas"], limit=10000)
+        result = col.get(include=["metadatas"], limit=100000)
         if not result or not result.get("metadatas"):
             return set()
         hashes: set[str] = set()
@@ -151,6 +197,49 @@ def delete_document(document_id: str) -> None:
         log.info("Deleted vectors for document %s", document_id)
     except Exception as exc:
         log.warning("Chroma delete failed for %s: %s", document_id, exc)
+    try:
+        # The in-memory BM25 index must not keep serving deleted content until
+        # its next scheduled refresh.
+        from app.ingest.retriever import force_bm25_refresh
+        force_bm25_refresh()
+    except Exception:
+        pass
+
+
+def backfill_scope_metadata(scope: str = "university") -> int:
+    """Tag legacy chunk metadata with a scope value (idempotent, boot-time).
+
+    Chunks stored before college scoping existed carry no `scope` key; this
+    stamps them as university-wide so scope-aware retrieval can isolate the
+    college corpus without dropping legacy content. Returns chunks updated.
+    """
+    col = get_collection()
+    try:
+        result = col.get(include=["metadatas"])
+    except Exception as exc:
+        log.warning("backfill_scope_metadata: get failed: %s", exc)
+        return 0
+    if not result or not result.get("ids"):
+        return 0
+    ids, metas = result["ids"], result["metadatas"] or []
+    ids_to_update: list[str] = []
+    new_metas: list[dict] = []
+    for i, cid in enumerate(ids):
+        meta = metas[i] if i < len(metas) and metas[i] else {}
+        if meta and meta.get("scope") is None:
+            patched = dict(meta)
+            patched["scope"] = scope
+            ids_to_update.append(cid)
+            new_metas.append(patched)
+    if not ids_to_update:
+        return 0
+    try:
+        col.update(ids=ids_to_update, metadatas=new_metas)
+        log.info("Backfilled scope=%s on %d legacy chunks", scope, len(ids_to_update))
+    except Exception as exc:
+        log.warning("backfill_scope_metadata update failed: %s", exc)
+        return 0
+    return len(ids_to_update)
 
 
 def get_all_chunks(limit: int = 10000) -> list[dict[str, Any]]:
@@ -164,7 +253,7 @@ def get_all_chunks(limit: int = 10000) -> list[dict[str, Any]]:
         for i, doc_id in enumerate(result["ids"]):
             meta = (result["metadatas"] or [{}])[i] or {}
             doc_text = (result["documents"] or [""])[i] or ""
-            out.append({
+            chunk = {
                 "id": doc_id,
                 "content": doc_text,
                 "document_id": meta.get("document_id"),
@@ -173,19 +262,24 @@ def get_all_chunks(limit: int = 10000) -> list[dict[str, Any]]:
                 "chunk_index": meta.get("chunk_index"),
                 "heading": meta.get("heading") or "",
                 "sha256": meta.get("sha256", ""),
-            })
+            }
+            for key in FILTER_METADATA_KEYS:
+                if key in meta:
+                    chunk[key] = meta[key]
+            out.append(chunk)
         return out
     except Exception as exc:
         log.warning("get_all_chunks failed: %s", exc)
         return []
 
 
-def query(embedding: list[float], top_k: int = 6) -> list[dict[str, Any]]:
+def query(embedding: list[float], top_k: int = 6, where: dict | None = None) -> list[dict[str, Any]]:
     col = get_collection()
     res = col.query(
         query_embeddings=[embedding],
         n_results=top_k,
         include=["documents", "metadatas", "distances"],
+        where=where,
     )
     out: list[dict[str, Any]] = []
     if not res or not res.get("ids") or not res["ids"][0]:
@@ -196,16 +290,18 @@ def query(embedding: list[float], top_k: int = 6) -> list[dict[str, Any]]:
     dists = res.get("distances", [[]])[0]
     for i, doc in enumerate(docs):
         meta = metas[i] or {}
-        out.append(
-            {
-                "id": ids[i],
-                "content": doc,
-                "document_id": meta.get("document_id"),
-                "document_title": meta.get("document_title"),
-                "page_number": meta.get("page_number") or None,
-                "chunk_index": meta.get("chunk_index"),
-                "heading": meta.get("heading") or "",
-                "distance": dists[i] if i < len(dists) else None,
-            }
-        )
+        chunk: dict[str, Any] = {
+            "id": ids[i],
+            "content": doc,
+            "document_id": meta.get("document_id"),
+            "document_title": meta.get("document_title"),
+            "page_number": meta.get("page_number") or None,
+            "chunk_index": meta.get("chunk_index"),
+            "heading": meta.get("heading") or "",
+            "distance": dists[i] if i < len(dists) else None,
+        }
+        for key in FILTER_METADATA_KEYS:
+            if key in meta:
+                chunk[key] = meta[key]
+        out.append(chunk)
     return out

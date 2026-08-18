@@ -16,7 +16,7 @@ from sqlalchemy import Boolean, Column, DateTime, ForeignKey, Integer, String, T
 from sqlalchemy.orm import relationship
 
 from app.database import Base, utcnow
-from app.models.db_models import _UUID
+from app.database import _UUID
 
 
 def _fk_col(**kwargs):
@@ -259,3 +259,7 @@ __all__ = [
     "StudentTranscript",
     "XeroxRequest",
 ]
+
+# Register the string-referenced relationship target (Student) so this module
+# is also importable standalone (e.g. by one-off maintenance scripts).
+from app.models.db_models import Student as _Student  # noqa: E402, F401

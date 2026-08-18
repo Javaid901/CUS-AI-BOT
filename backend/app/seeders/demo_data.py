@@ -167,6 +167,8 @@ def _seed_demo_students(db: Session, count: int = 25) -> None:
     students_to_seed = _STUDENTS[:count]
     student_objects = []
     for s in students_to_seed:
+        # NEP 2020 cohorts start from 2023 admissions; earlier cohorts follow CBCS
+        scheme = "nep2020" if s["admission_year"] >= 2023 else "cbcs"
         student = Student(
             id=uuid.uuid4(),
             reg_no=s["reg_no"],
@@ -181,6 +183,7 @@ def _seed_demo_students(db: Session, count: int = 25) -> None:
             phone=s["phone"],
             college=s["college"],
             programme=s["programme"],
+            academic_scheme=scheme,
             current_semester=s["semester"],
             admission_year=s["admission_year"],
             batch=s["batch"],

@@ -120,6 +120,9 @@ class RequestQueue:
             while self._heap:
                 _prio, _counter, rid, req = heappop(self._heap)
                 slot = self._slots.get(rid)
+                if slot is None:
+                    # Cancelled entry left in the heap — discard it.
+                    continue
 
                 # Check timeout
                 elapsed = time.monotonic() - req.enqueued_at
@@ -133,6 +136,9 @@ class RequestQueue:
                 req.state = RequestState.PROCESSING
                 req.dequeued_at = time.monotonic()
                 self._stats["dequeued"] += 1
+                # Drop the coalescing entry so a later identical request gets a
+                # fresh slot instead of reusing this already-satisfied one.
+                self._cleanup_coalesce(req)
                 if slot:
                     slot.set()
                 self._notify(self._on_dequeue, req)
@@ -152,6 +158,18 @@ class RequestQueue:
             req.state = RequestState.CANCELLED
             self._slots.pop(request_id, None)
             self._stats["cancelled"] += 1
+            self._cleanup_coalesce(req)
+            return True
+
+    async def complete(self, request_id: str) -> bool:
+        """Drop bookkeeping for a finished request. Returns True if released."""
+        async with self._lock:
+            slot = self._slots.pop(request_id, None)
+            if slot is None:
+                return False
+            req = slot.request
+            if req.state == RequestState.PROCESSING:
+                req.state = RequestState.COMPLETED
             self._cleanup_coalesce(req)
             return True
 

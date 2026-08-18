@@ -15,7 +15,9 @@ LLM / Embeddings:
 from __future__ import annotations
 
 import os
+import secrets
 
+from pydantic import model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -58,7 +60,7 @@ class Settings(BaseSettings):
     EMBED_MODEL: str = "nomic-embed-text"
     LLM_TEMPERATURE: float = 0.1
     LLM_TOP_P: float = 0.9
-    LLM_MAX_TOKENS: int = 256
+    LLM_MAX_TOKENS: int = 512
     # How long to keep models loaded in Ollama memory after last use (seconds).
     OLLAMA_KEEP_ALIVE: int = 600  # 10 minutes
 
@@ -137,6 +139,47 @@ class Settings(BaseSettings):
     # Max concurrent downloads.
     KNOWLEDGE_SYNC_MAX_CONCURRENT: int = 5
 
+    # ----- Website Knowledge Sync (enterprise crawler engine) -----
+    # Master toggle for the website crawler engine (also controllable from the
+    # admin dashboard, which persists its state in WEBSITE_SYNC_STATE_FILE).
+    WEBSITE_SYNC_ENABLED: bool = False
+    # Production Website Sync source. The pipeline defaults to this value; an
+    # explicit base_url (admin "Sync Now", seed URLs, tests) always wins.
+    # WEBSITE_BASE_URL remains as a deprecated fallback for existing installs.
+    WEBSITE_KNOWLEDGE_SOURCE_URL: str = "https://www.cusrinagar.edu.in"
+    WEBSITE_BASE_URL: str = ""
+    # Crawl bounds: total pages, BFS depth, politeness delay between requests.
+    WEBSITE_CRAWL_MAX_PAGES: int = 200
+    WEBSITE_CRAWL_MAX_DEPTH: int = 4
+    WEBSITE_CRAWL_DELAY: float = 0.4
+    WEBSITE_SYNC_MAX_CONCURRENT: int = 4
+    # Security: only http/https schemes, only the configured domain/subdomains,
+    # and SSRF protection — resolved hosts must NOT be loopback / link-local /
+    # private-network addresses unless this flag is explicitly enabled (only
+    # for local dummy/test mirrors; never for production hosts).
+    WEBSITE_SYNC_ALLOW_PRIVATE_HOSTS: bool = False
+    WEBSITE_SYNC_VERIFY_TLS: bool = True
+    # Discovery: treat robots.txt "Sitemap:" directives and /sitemap.xml as an
+    # ADDITIONAL seed source (never exclusive; HTML crawling is always primary).
+    WEBSITE_SYNC_USE_SITEMAP: bool = True
+    # Max size in MB for any downloaded page/document (chunked enforcement).
+    WEBSITE_SYNC_MAX_FILE_SIZE_MB: int = 25
+    # Retry with exponential backoff for transient failures (5xx/timeouts).
+    WEBSITE_SYNC_RETRIES: int = 2
+    WEBSITE_SYNC_RETRY_BASE_DELAY: float = 1.0
+    WEBSITE_SYNC_REQUEST_TIMEOUT: float = 30.0
+    # Auto-sync cadence in hours (0 = disabled). The dashboard also exposes
+    # hourly/daily/weekly/monthly presets.
+    WEBSITE_SYNC_SCHEDULE_HOURS: int = 0
+    # Index extracted page content into the RAG store (document_type="website").
+    WEBSITE_SYNC_INDEX_RAG: bool = True
+    # Document extensions discovered during crawling that are downloaded and
+    # indexed as attachments (incl. PPT/PPTX where a parser is available).
+    WEBSITE_SYNC_DOCUMENT_EXTS: str = "pdf,doc,docx,xls,xlsx,csv,txt,md,ppt,pptx"
+    # Persistent scheduler state (enabled flag + cadence + runtime state machine
+    # status) shared by the dashboard toggle and the background scheduler.
+    WEBSITE_SYNC_STATE_FILE: str = "./sync_downloads/website_sync_state.json"
+
     # ----- Demo Mode -----
     # When enabled, seeds demo student data and synthetic service records on startup.
     DEMO_MODE: bool = True
@@ -147,6 +190,42 @@ class Settings(BaseSettings):
     SEED_ADMIN_USERNAME: str = "admin"
     SEED_ADMIN_PASSWORD: str = "admin123"
     SEED_ADMIN_EMAIL: str = "admin@cus.ac.in"
+
+    # ----- Email (best-effort outbound, default OFF) -----
+    EMAIL_ENABLED: bool = False
+    SMTP_HOST: str = ""
+    SMTP_PORT: int = 587
+    SMTP_STARTTLS: bool = True
+    SMTP_USER: str = ""
+    SMTP_PASSWORD: str = ""
+    MAIL_FROM: str = ""
+    MAIL_FROM_NAME: str = "CUS Grievance Cell"
+    # Public base URL used in authority notification emails to link the
+    # recipient to the Authority Admin dashboard (e.g. https://cus.ac.in).
+    # Empty => the dashboard-link line is omitted from emails.
+    PUBLIC_BASE_URL: str = ""
+
+    # ----- Public grievance intake (per-IP per-minute rate limits) -----
+    GRIEVANCE_GENERATE_LIMIT: int = 5      # LLM draft generation
+    GRIEVANCE_RECOMMEND_LIMIT: int = 30    # authority recommendation
+    GRIEVANCE_CREATE_LIMIT: int = 6        # submissions
+    GRIEVANCE_VERIFY_LIMIT: int = 20       # status verification lookups
+
+    @model_validator(mode="after")
+    def _validate_security(self) -> "Settings":
+        if self.SECRET_KEY == "change-me-in-production-please-use-a-long-random-string":
+            if self.ENVIRONMENT.lower() in ("production", "prod"):
+                raise RuntimeError(
+                    "SECRET_KEY must be set (e.g. in backend/.env) when ENVIRONMENT=production."
+                )
+            self.SECRET_KEY = secrets.token_hex(32)
+            import logging
+
+            logging.getLogger("cus_ai").warning(
+                "SECRET_KEY not configured; generated a random dev key "
+                "(existing JWT tokens will be invalidated on the next restart)."
+            )
+        return self
 
     @property
     def cors_origin_list(self) -> list[str]:

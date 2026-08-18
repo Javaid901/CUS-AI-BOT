@@ -45,10 +45,11 @@ def generate_insights() -> list[dict[str, Any]]:
     """
     insights: list[dict[str, Any]] = []
 
-    now = datetime.now(timezone.utc)
+    # SQLite stores datetimes as naive UTC strings (tzinfo is dropped on read),
+    # so all boundaries must be naive-UTC to compare against loaded rows.
+    now = datetime.now(timezone.utc).replace(tzinfo=None)
     today_start = now.replace(hour=0, minute=0, second=0, microsecond=0)
     yesterday_start = today_start - timedelta(days=1)
-    today_start - timedelta(days=7)
     month_start = today_start.replace(day=1)
     prev_month_start = (month_start - timedelta(days=1)).replace(day=1)
 

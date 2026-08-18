@@ -54,7 +54,7 @@ window.CUS.injectChrome = function () {
     header.innerHTML =
       '<div class="container nav">' +
         '<a class="brand" href="index.html">' +
-          '<span class="logo">CUS</span>' +
+          '<span class="logo"><svg viewBox="0 0 24 24" width="22" height="22" fill="currentColor" aria-hidden="true"><path d="M12 3 1 8l11 5 9-4.09V17h2V8L12 3z"/><path d="M5 13.18v4L12 21l7-3.82v-4L12 17l-7-3.82z"/></svg></span>' +
           '<span class="name">Cluster University<small>Srinagar · Est. 2016</small></span>' +
         "</a>" +
         '<nav class="nav-links">' + links + "</nav>" +
@@ -70,12 +70,12 @@ window.CUS.injectChrome = function () {
     footer.innerHTML =
       '<div class="top">' +
         "<div>" +
-          '<div class="brand" style="color:#fff;margin-bottom:14px;"><span class="logo">CUS</span><span style="font-weight:700;font-family:var(--display);">Cluster University of Srinagar</span></div>' +
+          '<div class="brand" style="color:#fff;margin-bottom:14px;"><span class="logo"><svg viewBox="0 0 24 24" width="22" height="22" fill="currentColor" aria-hidden="true"><path d="M12 3 1 8l11 5 9-4.09V17h2V8L12 3z"/><path d="M5 13.18v4L12 21l7-3.82v-4L12 17l-7-3.82z"/></svg></span><span style="font-weight:700;font-family:var(--display);">Cluster University of Srinagar</span></div>' +
           '<p style="color:#9fb2c2;max-width:34ch;margin:0;">Gogji-Bagh, Srinagar, Jammu & Kashmir, India 190008. A premier state university committed to academic excellence.</p>' +
         "</div>" +
         '<div><h4>Quick Links</h4><a href="index.html">Home</a><a href="about.html">About</a><a href="admissions.html">Admissions</a><a href="colleges.html">Colleges</a><a href="contact.html">Contact</a></div>' +
         '<div><h4>Academics</h4><a href="admissions.html">UG Admissions</a><a href="admissions.html">PG Admissions 2026</a><a href="about.html">Departments</a><a href="about.html">Research</a></div>' +
-        '<div><h4>Connect</h4><a href="contact.html">HelpDesk</a><a href="contact.html">Grievance</a><a href="#" data-open-chat>AI Assistant</a></div>' +
+        '<div><h4>Connect</h4><a href="contact.html">HelpDesk</a><a href="contact.html">Grievance</a><a href="#" data-open-chat>AI Assistant</a><a href="authority-admin.html">Authority Portal</a></div>' +
       "</div>" +
       '<div class="copy">© 2016–2026 Cluster University of Srinagar · CUS AI Knowledge Assistant</div>';
   }

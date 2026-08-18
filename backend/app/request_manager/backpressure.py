@@ -24,6 +24,8 @@ class BackpressureController:
     def __init__(self) -> None:
         self._history: list[dict] = []
         self._max_history = 100
+        # How long a recorded capacity signal stays meaningful (seconds).
+        self._decay_window = 30.0
 
     def record_capacity(self, usage_pct: float) -> None:
         """Record the current capacity usage percentage."""
@@ -36,10 +38,27 @@ class BackpressureController:
 
     @property
     def current_usage_pct(self) -> float:
-        """Estimate current capacity usage based on recent history."""
+        """Estimate current capacity usage based on recent history.
+
+        Older samples decay linearly to zero over the decay window so a
+        single transient spike does not latch the system into backpressure
+        forever.
+        """
         if not self._history:
             return 0.0
-        return self._history[-1]["usage_pct"]
+        now = time.time()
+        weighted = 0.0
+        weight_sum = 0.0
+        for sample in self._history[-self._max_history:]:
+            age = now - sample["timestamp"]
+            if age > self._decay_window or age < 0:
+                continue
+            weight = 1.0 - (age / self._decay_window)
+            weighted += sample["usage_pct"] * weight
+            weight_sum += weight
+        if weight_sum <= 0:
+            return 0.0
+        return round(weighted / weight_sum, 2)
 
     def should_queue(self, priority: Priority) -> bool:
         """Decide whether a request should be queued based on load."""

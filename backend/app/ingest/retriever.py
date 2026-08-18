@@ -230,15 +230,6 @@ def rewrite_query(query: str, context: dict[str, Any] | None = None) -> str:
             q = expansion
             had_expansion = True
 
-    # Detect keywords in the query and append contextual terms
-    q.lower()
-    if not had_expansion:
-        topic_info = detect_topic(q)
-        if topic_info["topic_key"]:
-            # If query already has a topic but is short, add programme context
-            if is_short and context_parts:
-                pass  # context will be added below
-
     # If context is available and query is short, prepend context
     if (is_short or had_expansion) and context_parts:
         q = " ".join(context_parts) + " " + q
@@ -347,6 +338,94 @@ def get_bm25() -> BM25Index:
     return _bm25
 
 
+def force_bm25_refresh() -> None:
+    """Drop the refresh-interval gate so the next search rebuilds from storage."""
+    with _bm25._lock:
+        _bm25._ready = False
+        _bm25._last_refresh = 0.0
+
+
+# ---------------------------------------------------------------------------
+# Metadata filtering (academic scheme / programme / semester aware)
+# ---------------------------------------------------------------------------
+
+_FILTERABLE_KEYS = (
+    "academic_scheme",
+    "programme",
+    "department",
+    "batch",
+    "semester",
+    "document_type",
+    "category",
+    "college_id",
+    "scope",
+)
+
+
+def build_metadata_filter(context: dict[str, Any] | None) -> dict | None:
+    """Build a Chroma `where` filter from conversation context.
+
+    Only context fields with a known value become clauses. All values are
+    normalized to lowercase strings to match how chunk metadata is stored.
+    Returns None when no filterable context is present (unfiltered search).
+    """
+    if not context:
+        return None
+    clauses: list[dict] = []
+    for key in _FILTERABLE_KEYS:
+        value = context.get(key)
+        if value in (None, ""):
+            continue
+        if key == "semester":
+            value = str(value).strip()
+            if not value.isdigit():
+                continue
+        clauses.append({key: str(value).strip().lower()})
+    if not clauses:
+        return None
+    if len(clauses) == 1:
+        return clauses[0]
+    return {"$and": clauses}
+
+
+def _matches_where(
+    chunk: dict[str, Any], where: dict | None, loose: bool = False
+) -> bool:
+    """Check whether a chunk's metadata satisfies a Chroma-style where dict.
+
+    Supports simple equality clauses and $and / $or conjunctions.
+    When `loose` is True (used for fallback rescues), chunks that lack a
+    filter key entirely (legacy, untagged content) count as matching, while
+    chunks whose metadata explicitly contradicts the filter still fail.
+    """
+    if not where:
+        return True
+    if "$and" in where:
+        return all(_matches_where(chunk, clause, loose) for clause in where["$and"])
+    if "$or" in where:
+        return any(_matches_where(chunk, clause, loose) for clause in where["$or"])
+    for key, expected in where.items():
+        actual = chunk.get(key)
+        if isinstance(expected, dict):
+            if "$eq" in expected:
+                if actual is None:
+                    if not loose:
+                        return False
+                    continue
+                if str(actual).lower() != str(expected["$eq"]).lower():
+                    return False
+            if "$ne" in expected and str(actual).lower() == str(expected["$ne"]).lower():
+                return False
+            continue
+        if actual is None:
+            if not loose:
+                return False
+            continue
+        if str(actual).lower() != str(expected).lower():
+            return False
+    return True
+
+
 # ---------------------------------------------------------------------------
 # Hybrid search
 # ---------------------------------------------------------------------------
@@ -358,9 +437,18 @@ def _normalize_distance(dist: float | None) -> float:
     return round(max(0.0, 1.0 - float(dist)), 4)
 
 
-def hybrid_search(query: str, top_k_expand: int | None = None) -> list[dict[str, Any]]:
+def hybrid_search(
+    query: str,
+    top_k_expand: int | None = None,
+    where: dict | None = None,
+) -> list[dict[str, Any]]:
     """Run hybrid search: embedding + BM25, merge and score.
     
+    When `where` is provided, results are restricted to chunks whose metadata
+    matches the filter. If the filtered pool is too small, a loose fallback
+    pass is merged in so legacy (un-tagged) content is never lost, while
+    content that explicitly contradicts the filter stays excluded.
+
     Returns candidate list with fields:
         content, document_id, document_title, page_number, chunk_index,
         heading, embedding_score, bm25_score, combined_score
@@ -369,7 +457,25 @@ def hybrid_search(query: str, top_k_expand: int | None = None) -> list[dict[str,
 
     # 1. Embedding search
     embedding = embed_query(query)
-    emb_results = chroma_query(embedding, top_k=tk)
+    if where:
+        emb_results = chroma_query(embedding, top_k=tk, where=where)
+        bm25_results = [c for c in get_bm25().search(query, top_k=tk * 3) if _matches_where(c, where)]
+        # Fallback: filtered pool too thin → merge an unfiltered pass for
+        # recall. Loose matching keeps legacy (untagged) content reachable
+        # while chunks whose metadata explicitly contradicts the filter stay
+        # excluded (e.g. NEP-2020 docs never surface for a CBCS student).
+        if len(emb_results) + len(bm25_results) < min(3, tk):
+            extra_emb = chroma_query(embedding, top_k=tk)
+            extra_bm25 = get_bm25().search(query, top_k=tk)
+            emb_results = emb_results + [c for c in extra_emb if _matches_where(c, where, loose=True)]
+            bm25_results = bm25_results + [c for c in extra_bm25 if _matches_where(c, where, loose=True)]
+        _record_diag("metadata_filter", where)
+        _record_diag("filtered_embedding_results", len(emb_results))
+        _record_diag("filtered_bm25_results", len(bm25_results))
+    else:
+        emb_results = chroma_query(embedding, top_k=tk)
+        bm25_results = get_bm25().search(query, top_k=tk)
+
     emb_map: dict[str, dict[str, Any]] = {}
     for c in emb_results:
         cid = c.get("id", "")
@@ -378,9 +484,7 @@ def hybrid_search(query: str, top_k_expand: int | None = None) -> list[dict[str,
         emb_map[cid] = c
 
     # 2. BM25 search
-    bm25 = get_bm25()
-    bm25.refresh()
-    bm25_results = bm25.search(query, top_k=tk)
+
     bm25_map: dict[str, dict[str, Any]] = {}
     for c in bm25_results:
         cid = c.get("id", "")
@@ -596,8 +700,13 @@ def retrieve_hybrid(
     topic_info = detect_topic(rewritten)
     _record_diag("topic", topic_info)
 
+    # 2b. Metadata filter (academic scheme / programme / semester aware)
+    where_filter = build_metadata_filter(context)
+    if where_filter:
+        _record_diag("where_filter", where_filter)
+
     # 3. Hybrid search (candidate expansion)
-    candidates = hybrid_search(rewritten)
+    candidates = hybrid_search(rewritten, where=where_filter)
 
     if not candidates:
         log.info("Retriever: no candidates found for '%s'", rewritten[:60])

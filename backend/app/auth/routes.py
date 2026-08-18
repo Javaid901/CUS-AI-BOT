@@ -29,6 +29,7 @@ from app.models import RefreshToken, User
 from app.utils.logging import audit
 from fastapi import APIRouter, Depends, Form, HTTPException, Request
 from pydantic import BaseModel, EmailStr
+from sqlalchemy import func
 from sqlalchemy.orm import Session
 
 router = APIRouter(prefix=f"{settings.API_PREFIX}/auth", tags=["auth"])
@@ -48,10 +49,28 @@ class TokenResponse(BaseModel):
     user: dict | None = None
 
 
+def _identity(user: User) -> dict:
+    """Authenticated-identity envelope: everything the client needs to know
+    about the current principal. The authoritative values for role/scope are
+    always re-derived from the DB on every request (`get_current_user`) — the
+    JWT carries only `sub`; these fields are informational for the UI.
+    Never contains password/hash/token material."""
+    return {
+        "id": str(user.id),
+        "username": user.username,
+        "email": user.email,
+        "role": user.role,
+        "authority_id": str(user.authority_id) if user.authority_id else None,
+        "is_active": bool(user.is_active),
+    }
+
+
 @router.post("/register", response_model=TokenResponse)
 def register(body: RegisterRequest, request: Request, db: Session = Depends(get_db)):
     if db.query(User).filter(User.username == body.username).first():
         raise HTTPException(status_code=409, detail="Username already registered")
+    if db.query(User).filter(func.lower(User.email) == body.email.lower()).first():
+        raise HTTPException(status_code=409, detail="Email already registered")
     # Self-registration is always a low-privilege "student" (chat-only) account.
     user = User(
         id=uuid.uuid4(),
@@ -70,7 +89,7 @@ def register(body: RegisterRequest, request: Request, db: Session = Depends(get_
     return TokenResponse(
         access_token=access,
         refresh_token=refresh,
-        user={"id": str(user.id), "username": user.username, "role": user.role},
+        user=_identity(user),
     )
 
 
@@ -81,7 +100,11 @@ def login(
     username: str = Form(...),
     password: str = Form(...),
 ):
-    user = db.query(User).filter(User.username == username).first()
+    user = (
+        db.query(User)
+        .filter((User.username == username) | (func.lower(User.email) == username.strip().lower()))
+        .first()
+    )
     if not user or not verify_password(password, user.hashed_password):
         audit(db, "login_failed", target=username, ip=request.client.host if request.client else None)
         raise HTTPException(status_code=401, detail="Invalid username or password")
@@ -95,7 +118,7 @@ def login(
     return TokenResponse(
         access_token=access,
         refresh_token=refresh,
-        user={"id": str(user.id), "username": user.username, "role": user.role},
+        user=_identity(user),
     )
 
 
@@ -108,10 +131,15 @@ def refresh(body: RefreshRequest, db: Session = Depends(get_db)):
     token = db.query(RefreshToken).filter(RefreshToken.token == body.refresh_token).first()
     if not token or token.revoked:
         raise HTTPException(status_code=401, detail="Invalid refresh token")
-    if token.expires_at < datetime.now(timezone.utc):
+    # SQLite returns `DateTime(timezone=True)` values as naive datetimes, while
+    # the comparison side is tz-aware — normalize before comparing.
+    expires_at = token.expires_at
+    if expires_at is not None and expires_at.tzinfo is None:
+        expires_at = expires_at.replace(tzinfo=timezone.utc)
+    if expires_at is None or expires_at < datetime.now(timezone.utc):
         raise HTTPException(status_code=401, detail="Refresh token expired")
     user = db.get(User, token.user_id)
     if not user or not user.is_active:
         raise HTTPException(status_code=401, detail="User not found")
     access = create_access_token(str(user.id), user.role)
-    return TokenResponse(access_token=access, user={"id": str(user.id), "username": user.username, "role": user.role})
+    return TokenResponse(access_token=access, user=_identity(user))
