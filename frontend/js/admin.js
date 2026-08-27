@@ -751,7 +751,9 @@
       .catch(function () { toast("Re-index failed", "error"); });
   }
 
-  $("refreshBtn").addEventListener("click", function () { loadHealth(); loadDocs(); updateJobDashboard(); });
+  $("refreshBtn").addEventListener("click", function () {
+    location.reload();
+  });
 
   // ===== Tab Switching =====
   var tabBtns = document.querySelectorAll(".tab-btn");

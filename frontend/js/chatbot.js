@@ -910,6 +910,8 @@
     submitting: false,
     panel: null,
     errorMsg: "",
+    flowId: null,
+    generation: 0,
   };
 
   function govUid() {
@@ -936,6 +938,8 @@
     GOV.idemKey = null;
     GOV.submitting = false;
     GOV.errorMsg = "";
+    GOV.generation += 1;
+    GOV.flowId = "grv-" + GOV.generation;
     if (state.firstMsg) { suggest.classList.add("hidden"); state.firstMsg = false; }
 
     if (GOV.panel && GOV.panel.parentNode) GOV.panel.remove();
@@ -982,15 +986,23 @@
         var id = d.authority.authority_id;
         if (!id) return;
         govWaitAuthorities(function () {
-          if (GOV.mode === "idle") return; // user cancelled meanwhile
+          if (GOV.flowId !== "grv-" + GOV.generation) return; // stale request protection
           var found = null;
           for (var i = 0; i < GOV.authorities.length; i++) {
             if (GOV.authorities[i].authority_id === id) { found = GOV.authorities[i]; break; }
           }
           if (!found) return; // not in the active list — show the picker
           GOV.authority = found;
-          addMsg("user", "<p>Authority: <strong>" + escapeHtml(found.authority_name) +
-            "</strong> <span class=\"meta-inline\">(detected from your message)</span></p>");
+          // Display authority inside grievance panel, NOT in normal chat
+          if (GOV.panel) {
+            var already = GOV.panel.querySelector('.gauth-detected');
+            if (already) return; // already displayed
+            var det = document.createElement("div");
+            det.className = "gauth-detected";
+            det.innerHTML = '<p>Authority: <strong>' + escapeHtml(found.authority_name) +
+              "</strong> (detected from your message)</p>";
+            GOV.panel.insertBefore(det, GOV.panel.querySelector(".gpanel > .gsteps") || GOV.panel.firstChild);
+          }
           GOV.mode = "composing";
           govRender();
         }, 20);
@@ -1212,6 +1224,7 @@
     var btn = e.target.closest("button[data-gov]");
     if (!btn) return;
     var act = btn.getAttribute("data-gov");
+    console.log("[GRIEVANCE] govOnClick clicked, act:", act, "mode:", GOV.mode);
     if (act === "copy") { if (copyText2(btn.getAttribute("data-copy"))) toast("Copied to clipboard"); return; }
     if (act === "cancel") { govAskCancel(); return; }
     if (act === "cancel-yes") {
@@ -1230,7 +1243,16 @@
         }
       }
       if (!GOV.authority) { GOV.mode = "error"; GOV.errorMsg = "That authority is no longer available. Please choose another."; govRender(); return; }
-      addMsg("user", "<p>Authority: <strong>" + escapeHtml(GOV.authority.authority_name) + "</strong></p>");
+      // Display authority inside grievance panel, NOT in normal chat
+      if (GOV.panel) {
+        var already = GOV.panel.querySelector('.gauth-detected');
+        if (!already) {
+          var det = document.createElement("div");
+          det.className = "gauth-detected";
+          det.innerHTML = '<p>Authority: <strong>' + escapeHtml(GOV.authority.authority_name) + "</strong></p>";
+          GOV.panel.insertBefore(det, GOV.panel.querySelector(".gpanel > .gsteps") || GOV.panel.firstChild);
+        }
+      }
       GOV.mode = "composing";
       govRender();
       return;
@@ -1292,14 +1314,20 @@
     });
   }
 
-  function govManualDraft() {
+function govManualDraft() {
     var raw = govField("gv-in");
-    if (raw.length < 10) { toast("Please write at least 10 characters."); return; }
+    console.log("[GRIEVANCE] govManualDraft called, raw.length:", raw.length, "mode:", GOV.mode);
+    if (raw.length < 10) {
+        console.log("[GRIEVANCE] Validation failed, showing toast");
+        toast("Please write at least 10 characters.");
+        return;
+    }
+    console.log("[GRIEVANCE] Validation passed, moving to review");
     GOV.original = raw;
     GOV.draft = { generated: false, subject: "", text: raw };
     GOV.mode = "review";
     govRender();
-  }
+}
 
   function govAcceptDraft() {
     var txt = govField("gv-txt");

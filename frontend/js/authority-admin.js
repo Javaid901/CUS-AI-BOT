@@ -132,6 +132,7 @@
         setToken(res.data.access_token);
         currentUser = identity;
         showDash();
+      loadDashboard();
       })
       .catch(function () {
         loginBusy = false; $("loginBtn").disabled = false; $("loginBtn").textContent = "Sign In";
@@ -512,10 +513,13 @@
     });
   });
 
+  // ===== Refresh button =====
+  $("refreshBtn").addEventListener("click", function () { location.reload(); });
+
   // ===== Boot: restore session =====
   if (token) {
     apiJson(API + "/api/authority-admin/profile").then(function (res) {
-      if (res.ok) { currentUser = res.data; showDash(); }
+      if (res.ok) { currentUser = res.data; showDash(); loadDashboard(); }
       else if (res.status === 403) {
         // Token belongs to another role (student/superadmin): never use it here.
         setTimeout(showLogin, 0);
