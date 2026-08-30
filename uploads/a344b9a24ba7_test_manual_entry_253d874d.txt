@@ -1,0 +1,1 @@
+This is a sample manual knowledge entry about the college library timings for the automated test environment.

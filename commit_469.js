@@ -174,8 +174,6 @@
       '<div class="input-area">' +
         '<div class="input-wrap">' +
           '<textarea rows="1" placeholder="Ask anything about Cluster University Srinagar..." aria-label="Type your message"></textarea>' +
-          '<button class="mic" type="button" aria-label="Hold to speak" title="Hold to speak" aria-pressed="false">' +
-            '<svg viewBox="0 0 24 24" fill="none" stroke-linejoin="round"><path d="M22 2L2 22"/><path d="M2 22h7.5a4.5 4.5 0 0 1 0 9H5"/><circle cx="9" cy="9" r="4"/><path d="M2 2l20"/><path d="M6 12l3.5-7l3.5 7M15 12l3.5-7l3.5 7"/></svg>' +
           '<button class="send" aria-label="Send message" disabled>' +
             '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 2 11 13"/><path d="M22 2 15 22l-4-9-9-4 20-7z"/></svg>' +
           '</button>' +
@@ -514,189 +512,6 @@
     sendBtn.innerHTML = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 2 11 13"/><path d="M22 2 15 22l-4-9-9-4 20-7z"/></svg>';
   }
   function updateSendState() { if (state.streaming) return; sendBtn.disabled = !input.value.trim(); }
-
-  /* ---------- Voice input (hold-to-speak) ---------- */
-  var micBtn = root.querySelector(".mic");
-  var recognition = null;
-  var isListening = false;
-  var interimTranscript = "";
-  var finalTranscript = "";
-  var micActive = false;
-
-  function supportsVoiceInput() {
-    return !!(window.SpeechRecognition || window.webkitSpeechRecognition);
-  }
-
-  function initRecognition() {
-    var SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
-    if (supportsVoiceInput()) {
-      recognition = new SpeechRecognition();
-      recognition.continuous = true;
-      recognition.interimResults = true;
-      recognition.lang = "en-IN";
-      recognition.maxAlternatives = 1;
-
-      recognition.onstart = function () {
-        isListening = true;
-        if (micBtn) {
-          micBtn.setAttribute("aria-pressed", "true");
-          micBtn.setAttribute("title", "Release to stop listening");
-          micBtn.setAttribute("aria-label", "Release to stop listening");
-        }
-      };
-
-      recognition.onerror = function (e) {
-        var err = e.error;
-        if (err === "not-allowed" || err === "permission-denied") {
-          if (micBtn) {
-            micBtn.setAttribute("aria-pressed", "false");
-            micBtn.setAttribute("title", "Hold to speak");
-            micBtn.setAttribute("aria-label", "Hold to speak");
-          }
-        }
-        if (err === "no-speech") {
-          // user was silent — just keep listening, don't stop
-        }
-        if (err === "audio-capture") {
-          // microphone unavailable
-        }
-        if (err === "network") {
-          // speech service unavailable
-        }
-        if (recognition) {
-          recognition.stop();
-          isListening = false;
-          if (micBtn) {
-            micBtn.setAttribute("aria-pressed", "false");
-            micBtn.setAttribute("title", "Hold to speak");
-            micBtn.setAttribute("aria-label", "Hold to speak");
-          }
-        }
-      };
-
-      recognition.onresult = function (e) {
-        var interim = "";
-        var final = "";
-        for (var i = e.resultIndex; i < e.results.length; i++) {
-          if (e.results[i].isFinal) {
-            final += e.results[i][0].transcript;
-          } else {
-            interim += e.results[i][0].transcript;
-          }
-        }
-        interimTranscript = interim;
-        finalTranscript = final;
-
-        // Display in textarea while holding
-        if (input) {
-          input.value = finalTranscript + (interimTranscript ? " " + interimTranscript : "");
-        }
-      };
-
-      recognition.onend = function () {
-        // onend may fire even while still holding (browser interruptions)
-        // We only stop listening if the user has released the pointer.
-        // If still holding, we re-start recognition automatically.
-        if (!micActive) {
-          // User released — do NOT auto-restart; let finalizeVoiceQuery handle it
-          isListening = false;
-          if (micBtn) {
-            micBtn.setAttribute("aria-pressed", "false");
-            micBtn.setAttribute("title", "Hold to speak");
-            micBtn.setAttribute("aria-label", "Hold to speak");
-          }
-        } else {
-          // Still holding — restart recognition
-          try { recognition.start(); } catch (e) {}
-        }
-      };
-    }
-  }
-
-  if (supportsVoiceInput() && micBtn) {
-    initRecognition();
-
-    /* ---------- Hold-to-speak pointer handlers ---------- */
-    micBtn.addEventListener("pointerdown", function (e) {
-      // Prevent default browser actions (e.g., text selection on some devices)
-      e.preventDefault();
-      startVoiceCapture();
-    });
-
-    micBtn.addEventListener("pointerup", function (e) {
-      stopVoiceCapture();
-    });
-
-    micBtn.addEventListener("pointercancel", function (e) {
-      stopVoiceCapture();
-    });
-
-    micBtn.addEventListener("lostpointercapture", function (e) {
-      stopVoiceCapture();
-    });
-  }
-
-  function startVoiceCapture() {
-    if (!recognition) return;
-    if (state.streaming) return;
-    if (isListening) return;
-    isListening = true;
-    micActive = true;
-    interimTranscript = "";
-    finalTranscript = "";
-    try {
-      recognition.start();
-    } catch (e) {
-      isListening = false;
-      micActive = false;
-    }
-  }
-
-  function stopVoiceCapture() {
-    if (!recognition) return;
-    isListening = false;
-    micActive = false;
-    try {
-      recognition.stop();
-    } catch (e) {}
-    // finalize and submit
-    finalizeVoiceQuery();
-  }
-
-  function finalizeVoiceQuery() {
-    // Build the final transcript: final text + interim text
-    var transcript = finalTranscript + (interimTranscript ? " " + interimTranscript : "");
-    transcript = transcript.trim();
-
-    if (!transcript) {
-      // Empty — do nothing
-      if (micBtn) {
-        micBtn.setAttribute("aria-pressed", "false");
-        micBtn.setAttribute("title", "Hold to speak");
-        micBtn.setAttribute("aria-label", "Hold to speak");
-      }
-      return;
-    }
-
-    // Append to existing textarea content if any, otherwise just set the transcript
-    var current = (input ? input.value : "").trim();
-    if (current) {
-      input.value = current + " " + transcript;
-    } else {
-      input.value = transcript;
-    }
-    autosize();
-
-    // Call existing send function — this is the same path as typed text
-    sendClick();
-
-    // Reset mic state
-    if (micBtn) {
-      micBtn.setAttribute("aria-pressed", "false");
-      micBtn.setAttribute("title", "Hold to speak");
-      micBtn.setAttribute("aria-label", "Hold to speak");
-    }
-  }
 
   /* ---------- Message action handlers ---------- */
   body.addEventListener("click", function (e) {
@@ -1095,8 +910,6 @@
     submitting: false,
     panel: null,
     errorMsg: "",
-    flowId: null,
-    generation: 0,
   };
 
   function govUid() {
@@ -1123,8 +936,6 @@
     GOV.idemKey = null;
     GOV.submitting = false;
     GOV.errorMsg = "";
-    GOV.generation += 1;
-    GOV.flowId = "grv-" + GOV.generation;
     if (state.firstMsg) { suggest.classList.add("hidden"); state.firstMsg = false; }
 
     if (GOV.panel && GOV.panel.parentNode) GOV.panel.remove();
@@ -1171,23 +982,15 @@
         var id = d.authority.authority_id;
         if (!id) return;
         govWaitAuthorities(function () {
-          if (GOV.flowId !== "grv-" + GOV.generation) return; // stale request protection
+          if (GOV.mode === "idle") return; // user cancelled meanwhile
           var found = null;
           for (var i = 0; i < GOV.authorities.length; i++) {
             if (GOV.authorities[i].authority_id === id) { found = GOV.authorities[i]; break; }
           }
           if (!found) return; // not in the active list — show the picker
           GOV.authority = found;
-          // Display authority inside grievance panel, NOT in normal chat
-          if (GOV.panel) {
-            var already = GOV.panel.querySelector('.gauth-detected');
-            if (already) return; // already displayed
-            var det = document.createElement("div");
-            det.className = "gauth-detected";
-            det.innerHTML = '<p>Authority: <strong>' + escapeHtml(found.authority_name) +
-              "</strong> (detected from your message)</p>";
-            GOV.panel.insertBefore(det, GOV.panel.querySelector(".gpanel > .gsteps") || GOV.panel.firstChild);
-          }
+          addMsg("user", "<p>Authority: <strong>" + escapeHtml(found.authority_name) +
+            "</strong> <span class=\"meta-inline\">(detected from your message)</span></p>");
           GOV.mode = "composing";
           govRender();
         }, 20);
@@ -1409,7 +1212,6 @@
     var btn = e.target.closest("button[data-gov]");
     if (!btn) return;
     var act = btn.getAttribute("data-gov");
-    console.log("[GRIEVANCE] govOnClick clicked, act:", act, "mode:", GOV.mode);
     if (act === "copy") { if (copyText2(btn.getAttribute("data-copy"))) toast("Copied to clipboard"); return; }
     if (act === "cancel") { govAskCancel(); return; }
     if (act === "cancel-yes") {
@@ -1428,16 +1230,7 @@
         }
       }
       if (!GOV.authority) { GOV.mode = "error"; GOV.errorMsg = "That authority is no longer available. Please choose another."; govRender(); return; }
-      // Display authority inside grievance panel, NOT in normal chat
-      if (GOV.panel) {
-        var already = GOV.panel.querySelector('.gauth-detected');
-        if (!already) {
-          var det = document.createElement("div");
-          det.className = "gauth-detected";
-          det.innerHTML = '<p>Authority: <strong>' + escapeHtml(GOV.authority.authority_name) + "</strong></p>";
-          GOV.panel.insertBefore(det, GOV.panel.querySelector(".gpanel > .gsteps") || GOV.panel.firstChild);
-        }
-      }
+      addMsg("user", "<p>Authority: <strong>" + escapeHtml(GOV.authority.authority_name) + "</strong></p>");
       GOV.mode = "composing";
       govRender();
       return;
@@ -1499,20 +1292,14 @@
     });
   }
 
-function govManualDraft() {
+  function govManualDraft() {
     var raw = govField("gv-in");
-    console.log("[GRIEVANCE] govManualDraft called, raw.length:", raw.length, "mode:", GOV.mode);
-    if (raw.length < 10) {
-        console.log("[GRIEVANCE] Validation failed, showing toast");
-        toast("Please write at least 10 characters.");
-        return;
-    }
-    console.log("[GRIEVANCE] Validation passed, moving to review");
+    if (raw.length < 10) { toast("Please write at least 10 characters."); return; }
     GOV.original = raw;
     GOV.draft = { generated: false, subject: "", text: raw };
     GOV.mode = "review";
     govRender();
-}
+  }
 
   function govAcceptDraft() {
     var txt = govField("gv-txt");

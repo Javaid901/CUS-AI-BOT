@@ -248,6 +248,16 @@
 #cusw .input-wrap .send:disabled { opacity: .35; cursor: default; transform: none; box-shadow: none; }
 #cusw .input-wrap .send svg { width: 18px; height: 18px; }
 
+/* Microphone button — ensure icon is visible */
+#cusw .mic {
+  flex-shrink: 0;
+  width: 40px; height: 40px; border-radius: 50%; border: none;
+  background: transparent; display: grid; place-items: center;
+  cursor: pointer;
+  flex-shrink: 0;
+}
+#cusw .mic svg { width: 20px; height: 20px; }
+
 /* Loading spinner inside send button */
 #cusw .input-wrap .send .spinner {
   position: absolute; inset: 0; display: grid; place-items: center;

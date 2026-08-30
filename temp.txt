@@ -1,7 +1,7 @@
-(function () {
+﻿(function () {
   "use strict";
 
-  if (!window.CUS_API_BASE) throw new Error("CUS_API_BASE not defined — ensure config.js loads before chatbot.js");
+  if (!window.CUS_API_BASE) throw new Error("CUS_API_BASE not defined â€” ensure config.js loads before chatbot.js");
   var API = window.CUS_API_BASE;
   var TITLE = "CUS AI Assistant";
   var AUTH_KEY = "cus_auth";  // JSON: {user, pass, token}
@@ -160,8 +160,8 @@
           '</div>' +
         '</div>' +
         '<div class="head-actions">' +
-          '<button class="act-clear" title="Clear chat">🗑</button>' +
-          '<button class="act-close" title="Close">✕</button>' +
+          '<button class="act-clear" title="Clear chat">ðŸ—‘</button>' +
+          '<button class="act-close" title="Close">âœ•</button>' +
         '</div>' +
       '</div>' +
       '<div class="body" role="log" aria-live="polite" aria-label="Conversation"></div>' +
@@ -169,13 +169,15 @@
         '<button data-chip="Admissions">Admissions</button>' +
         '<button data-chip="Courses">Courses</button>' +
         '<button data-chip="Scholarships">Scholarships</button>' +
-        '<button data-chip="File a Grievance">📋 File a Grievance</button>' +
+        '<button data-chip="File a Grievance">ðŸ“‹ File a Grievance</button>' +
       '</div>' +
       '<div class="input-area">' +
         '<div class="input-wrap">' +
           '<textarea rows="1" placeholder="Ask anything about Cluster University Srinagar..." aria-label="Type your message"></textarea>' +
-          '<button class="mic" type="button" aria-label="Hold to speak" title="Hold to speak" aria-pressed="false">' +
-            '<svg viewBox="0 0 24 24" fill="none" stroke-linejoin="round"><path d="M22 2L2 22"/><path d="M2 22h7.5a4.5 4.5 0 0 1 0 9H5"/><circle cx="9" cy="9" r="4"/><path d="M2 2l20"/><path d="M6 12l3.5-7l3.5 7M15 12l3.5-7l3.5 7"/></svg>' +
+          '<button class="mic" aria-label="Hold to speak" title="Hold to speak" type="button" aria-pressed="false">' +
+            '<svg class="mic-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="20" height="20"><path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-6 0z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/><line x1="12" y1="19" x2="12" y2="22"/><line x1="8" y1="23" x2="16" y2="23"/></svg>' +
+            '<span class="mic-label">Listening...</span>' +
+          '</button>' +
           '<button class="send" aria-label="Send message" disabled>' +
             '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 2 11 13"/><path d="M22 2 15 22l-4-9-9-4 20-7z"/></svg>' +
           '</button>' +
@@ -208,7 +210,7 @@
     // Show correction banner if query was corrected
     if (role === "bot" && queryMeta && queryMeta.corrected) {
       var corr = document.createElement("div"); corr.className = "corr-banner";
-      corr.innerHTML = "💡 Did you mean: <strong>" + escapeHtml(queryMeta.clean) + "</strong>?";
+      corr.innerHTML = "ðŸ’¡ Did you mean: <strong>" + escapeHtml(queryMeta.clean) + "</strong>?";
       cell.appendChild(corr);
     }
 
@@ -220,7 +222,7 @@
         var id = c.document_id || c.document_title || c.source;
         if (id && seen[id]) return; if (id) seen[id] = 1;
         var el = document.createElement("span"); el.className = "cite";
-        el.innerHTML = "<b>" + escapeHtml(c.document_title || c.source || "Document") + "</b>" + (c.score != null ? " · " + Number(c.score).toFixed(2) : "");
+        el.innerHTML = "<b>" + escapeHtml(c.document_title || c.source || "Document") + "</b>" + (c.score != null ? " Â· " + Number(c.score).toFixed(2) : "");
         cwrap.appendChild(el);
       });
       cell.appendChild(cwrap);
@@ -228,10 +230,10 @@
     if (role === "bot") {
       var tools = document.createElement("div"); tools.className = "tools";
       var btns = [
-        { label: "Copy", ico: "📋", action: "copy" },
-        { label: "Regen", ico: "🔄", action: "regen" },
-        { label: "Helpful", ico: "👍", action: "helpful" },
-        { label: "Not helpful", ico: "👎", action: "nothelpful" },
+        { label: "Copy", ico: "ðŸ“‹", action: "copy" },
+        { label: "Regen", ico: "ðŸ”„", action: "regen" },
+        { label: "Helpful", ico: "ï¿½?", action: "helpful" },
+        { label: "Not helpful", ico: "ðŸ‘Ž", action: "nothelpful" },
       ];
       btns.forEach(function (b) {
         var btn = document.createElement("button"); btn.innerHTML = '<span class="ico">' + b.ico + '</span> ' + b.label;
@@ -246,7 +248,7 @@
     if (role === "bot" && context && context.breadcrumbs && context.breadcrumbs.length) {
       var bc = document.createElement("div"); bc.className = "breadcrumbs";
       context.breadcrumbs.forEach(function (crumb, i) {
-        if (i > 0) bc.appendChild(document.createTextNode(" › "));
+        if (i > 0) bc.appendChild(document.createTextNode(" â€º "));
         var span = document.createElement("span"); span.textContent = crumb; bc.appendChild(span);
       });
       if (context.programme) bc.dataset.prog = context.programme;
@@ -361,7 +363,7 @@
     if (title) html += "<strong>" + escapeHtml(title) + "</strong>";
     if (msg && msg !== title) html += "<p>" + escapeHtml(msg) + "</p>";
     if (payload.selector === "scheme") {
-      // Scheme picker — larger cards with descriptions
+      // Scheme picker â€” larger cards with descriptions
       html += '<div class="opts scheme-opts">';
       items.forEach(function (o) {
         html += '<button class="scheme-card" data-role="option" data-value="' + escapeHtml(o.id) + '">' +
@@ -376,7 +378,7 @@
         html += '<button class="chip" data-role="option" data-value="' + escapeHtml(o.id) + '">' + escapeHtml(o.label) + '</button>';
       });
       if (!payload.no_back) {
-        html += '<button class="chip back" data-role="option" data-value="back">← Back</button>';
+html += '<button class="chip back" data-role="option" data-value="back">← Back</button>';
       }
       html += "</div>";
     }
@@ -387,7 +389,7 @@
     // Returns a profile summary card (or empty string) for the authenticated student.
     if (!student) return "";
     var html = '<div class="profile-card">';
-    html += '<div class="profile-card-head">👤 Student Profile</div>';
+    html += '<div class="profile-card-head">ðŸ‘¤ Student Profile</div>';
     html += '<div class="profile-card-grid">';
     if (student.name) html += '<div><span class="pl">Name</span><span class="pv">' + escapeHtml(student.name) + '</span></div>';
     if (student.reg_no) html += '<div><span class="pl">Reg No</span><span class="pv">' + escapeHtml(student.reg_no) + '</span></div>';
@@ -423,17 +425,17 @@
       });
       html += "</div>";
     }
-    // Semester switcher — shown after a student service result for semester-aware services
+    // Semester switcher â€” shown after a student service result for semester-aware services
     var svc = context && context.service;
     var stu = context && context.student;
     if (svc && stu && stu.semester && _SEMESTER_SERVICES.indexOf(svc) !== -1) {
       var curSem = parseInt(stu.semester, 10);
       var items = [];
-      if (!isNaN(curSem) && curSem > 1) items.push(["previous semester", "◀ Previous semester"]);
+      if (!isNaN(curSem) && curSem > 1) items.push(["previous semester", "â—€ Previous semester"]);
       items.push(["current semester", "Current semester (" + escapeHtml(stu.semester) + ")"]);
-      items.push(["next semester", "Next semester ▶"]);
+      items.push(["next semester", "Next semester â–¶"]);
       html += '<div class="qactions sem-switch">';
-      html += '<span class="qalabel">🧭 View another semester:</span>';
+      html += '<span class="qalabel">ðŸ§­ View another semester:</span>';
       items.forEach(function (it) {
         html += '<button class="chip qa" data-role="option" data-value="' + it[0] + '">' + it[1] + '</button>';
       });
@@ -466,7 +468,7 @@
         html += '<button class="chip qa" data-role="action" data-value="dates">Dates</button>';
       }
       // Add colleges offering this course action
-      html += '<button class="chip qa" data-role="action" data-value="colleges_for_course">🏛 Colleges offering this</button>';
+      html += '<button class="chip qa" data-role="action" data-value="colleges_for_course">ï¿½?ï¿½ Colleges offering this</button>';
       html += "</div>";
     }
     html += '<button class="chip back" data-role="option" data-value="back">← Back</button>';
@@ -498,7 +500,7 @@
     });
     html += '<div class="aacts">';
     html += '<button class="chip asubmit" data-role="auth-submit" data-form="' + fid + '">' + escapeHtml(submitLabel) + '</button>';
-    html += '<button class="chip back" data-role="option" data-value="back">← Cancel</button>';
+    html += '<button class="chip back" data-role="option" data-value="back">ï¿½? Cancel</button>';
     html += "</div>";
     html += "</div>";
     addMsg("bot", html);
@@ -515,196 +517,13 @@
   }
   function updateSendState() { if (state.streaming) return; sendBtn.disabled = !input.value.trim(); }
 
-  /* ---------- Voice input (hold-to-speak) ---------- */
-  var micBtn = root.querySelector(".mic");
-  var recognition = null;
-  var isListening = false;
-  var interimTranscript = "";
-  var finalTranscript = "";
-  var micActive = false;
-
-  function supportsVoiceInput() {
-    return !!(window.SpeechRecognition || window.webkitSpeechRecognition);
-  }
-
-  function initRecognition() {
-    var SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
-    if (supportsVoiceInput()) {
-      recognition = new SpeechRecognition();
-      recognition.continuous = true;
-      recognition.interimResults = true;
-      recognition.lang = "en-IN";
-      recognition.maxAlternatives = 1;
-
-      recognition.onstart = function () {
-        isListening = true;
-        if (micBtn) {
-          micBtn.setAttribute("aria-pressed", "true");
-          micBtn.setAttribute("title", "Release to stop listening");
-          micBtn.setAttribute("aria-label", "Release to stop listening");
-        }
-      };
-
-      recognition.onerror = function (e) {
-        var err = e.error;
-        if (err === "not-allowed" || err === "permission-denied") {
-          if (micBtn) {
-            micBtn.setAttribute("aria-pressed", "false");
-            micBtn.setAttribute("title", "Hold to speak");
-            micBtn.setAttribute("aria-label", "Hold to speak");
-          }
-        }
-        if (err === "no-speech") {
-          // user was silent — just keep listening, don't stop
-        }
-        if (err === "audio-capture") {
-          // microphone unavailable
-        }
-        if (err === "network") {
-          // speech service unavailable
-        }
-        if (recognition) {
-          recognition.stop();
-          isListening = false;
-          if (micBtn) {
-            micBtn.setAttribute("aria-pressed", "false");
-            micBtn.setAttribute("title", "Hold to speak");
-            micBtn.setAttribute("aria-label", "Hold to speak");
-          }
-        }
-      };
-
-      recognition.onresult = function (e) {
-        var interim = "";
-        var final = "";
-        for (var i = e.resultIndex; i < e.results.length; i++) {
-          if (e.results[i].isFinal) {
-            final += e.results[i][0].transcript;
-          } else {
-            interim += e.results[i][0].transcript;
-          }
-        }
-        interimTranscript = interim;
-        finalTranscript = final;
-
-        // Display in textarea while holding
-        if (input) {
-          input.value = finalTranscript + (interimTranscript ? " " + interimTranscript : "");
-        }
-      };
-
-      recognition.onend = function () {
-        // onend may fire even while still holding (browser interruptions)
-        // We only stop listening if the user has released the pointer.
-        // If still holding, we re-start recognition automatically.
-        if (!micActive) {
-          // User released — do NOT auto-restart; let finalizeVoiceQuery handle it
-          isListening = false;
-          if (micBtn) {
-            micBtn.setAttribute("aria-pressed", "false");
-            micBtn.setAttribute("title", "Hold to speak");
-            micBtn.setAttribute("aria-label", "Hold to speak");
-          }
-        } else {
-          // Still holding — restart recognition
-          try { recognition.start(); } catch (e) {}
-        }
-      };
-    }
-  }
-
-  if (supportsVoiceInput() && micBtn) {
-    initRecognition();
-
-    /* ---------- Hold-to-speak pointer handlers ---------- */
-    micBtn.addEventListener("pointerdown", function (e) {
-      // Prevent default browser actions (e.g., text selection on some devices)
-      e.preventDefault();
-      startVoiceCapture();
-    });
-
-    micBtn.addEventListener("pointerup", function (e) {
-      stopVoiceCapture();
-    });
-
-    micBtn.addEventListener("pointercancel", function (e) {
-      stopVoiceCapture();
-    });
-
-    micBtn.addEventListener("lostpointercapture", function (e) {
-      stopVoiceCapture();
-    });
-  }
-
-  function startVoiceCapture() {
-    if (!recognition) return;
-    if (state.streaming) return;
-    if (isListening) return;
-    isListening = true;
-    micActive = true;
-    interimTranscript = "";
-    finalTranscript = "";
-    try {
-      recognition.start();
-    } catch (e) {
-      isListening = false;
-      micActive = false;
-    }
-  }
-
-  function stopVoiceCapture() {
-    if (!recognition) return;
-    isListening = false;
-    micActive = false;
-    try {
-      recognition.stop();
-    } catch (e) {}
-    // finalize and submit
-    finalizeVoiceQuery();
-  }
-
-  function finalizeVoiceQuery() {
-    // Build the final transcript: final text + interim text
-    var transcript = finalTranscript + (interimTranscript ? " " + interimTranscript : "");
-    transcript = transcript.trim();
-
-    if (!transcript) {
-      // Empty — do nothing
-      if (micBtn) {
-        micBtn.setAttribute("aria-pressed", "false");
-        micBtn.setAttribute("title", "Hold to speak");
-        micBtn.setAttribute("aria-label", "Hold to speak");
-      }
-      return;
-    }
-
-    // Append to existing textarea content if any, otherwise just set the transcript
-    var current = (input ? input.value : "").trim();
-    if (current) {
-      input.value = current + " " + transcript;
-    } else {
-      input.value = transcript;
-    }
-    autosize();
-
-    // Call existing send function — this is the same path as typed text
-    sendClick();
-
-    // Reset mic state
-    if (micBtn) {
-      micBtn.setAttribute("aria-pressed", "false");
-      micBtn.setAttribute("title", "Hold to speak");
-      micBtn.setAttribute("aria-label", "Hold to speak");
-    }
-  }
-
   /* ---------- Message action handlers ---------- */
   body.addEventListener("click", function (e) {
     var t = e.target.closest("button");
     if (!t) return;
     var role = t.getAttribute("data-role");
 
-    // Auth form submit — collect input values and send as "val1||val2"
+    // Auth form submit â€” collect input values and send as "val1||val2"
     if (role === "auth-submit") {
       if (state.streaming) return;
       var formId = t.getAttribute("data-form");
@@ -722,7 +541,7 @@
       return;
     }
 
-    // Service form submit — collect input values and send as "val1||val2||..."
+    // Service form submit â€” collect input values and send as "val1||val2||..."
     if (role === "svc-submit") {
       if (state.streaming) return;
       var svcFormId = t.getAttribute("data-form");
@@ -744,7 +563,7 @@
       var val = t.getAttribute("data-value") || "";
       if (!val) return;
       if (state.firstMsg) { suggest.classList.add("hidden"); state.firstMsg = false; }
-      var label = t.textContent.replace("←", "").trim();
+      var label = t.textContent.replace("ï¿½?", "").trim();
 
       // Special handling: "student_services" shows the service list locally
       if (val === "student_services") {
@@ -756,7 +575,7 @@
         STUDENT_SERVICES.forEach(function (s) {
           svcHtml += '<button class="chip" data-role="option" data-value="' + escapeHtml(s.id) + '">' + escapeHtml(s.label) + '</button>';
         });
-        svcHtml += '<button class="chip back" data-role="option" data-value="back">← Back</button>';
+        svcHtml += '<button class="chip back" data-role="option" data-value="back">ï¿½? Back</button>';
         svcHtml += "</div></div>";
         addMsg("bot", svcHtml);
         return;
@@ -785,10 +604,10 @@
     var text = msgEl ? msgEl.textContent || "" : "";
     var action = t.dataset.action;
     if (action === "copy") {
-      navigator.clipboard.writeText(text).then(function () { t.innerHTML = '<span class="ico">✓</span> Copied'; t.classList.add("copied"); toast("Copied to clipboard"); setTimeout(function () { t.innerHTML = '<span class="ico">📋</span> Copy'; t.classList.remove("copied"); }, 1600); }, function () { toast("Copy failed"); });
+      navigator.clipboard.writeText(text).then(function () { t.innerHTML = '<span class="ico">âœ“</span> Copied'; t.classList.add("copied"); toast("Copied to clipboard"); setTimeout(function () { t.innerHTML = '<span class="ico">ðŸ“‹</span> Copy'; t.classList.remove("copied"); }, 1600); }, function () { toast("Copy failed"); });
     } else if (action === "regen") { if (state.streaming) return; if (rowEl) rowEl.remove(); input.value = text; sendClick(); }
-    else if (action === "helpful") { t.innerHTML = '<span class="ico">✅</span> Helpful'; t.style.color = "#0F5132"; t.style.fontWeight = "600"; t.dataset.action = "done"; }
-    else if (action === "nothelpful") { t.innerHTML = '<span class="ico">✅</span> Not helpful'; t.style.color = "#0F5132"; t.style.fontWeight = "600"; t.dataset.action = "done"; }
+    else if (action === "helpful") { t.innerHTML = '<span class="ico">âœ…</span> Helpful'; t.style.color = "#0F5132"; t.style.fontWeight = "600"; t.dataset.action = "done"; }
+    else if (action === "nothelpful") { t.innerHTML = '<span class="ico">âœ…</span> Not helpful'; t.style.color = "#0F5132"; t.style.fontWeight = "600"; t.dataset.action = "done"; }
   });
 
   /* ---------- Auto-resize textarea ---------- */
@@ -836,13 +655,13 @@
         return _doLogin(user, pass);
       }
       if (r.status === 409) {
-        // Username collision (extremely rare with timestamp-based names) — try again
+        // Username collision (extremely rare with timestamp-based names) â€” try again
         console.warn("[CUS] Register 409 (collision), retrying with different name");
         user = "web_" + Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
         pass = "g" + Math.random().toString(36).slice(2, 12);
         return _doRegister(user, pass);
       }
-      // Any other register error — try login anyway (user might exist from prior session)
+      // Any other register error â€” try login anyway (user might exist from prior session)
       console.warn("[CUS] Register returned " + r.status + ", attempting login");
       return _doLogin(user, pass);
     });
@@ -880,10 +699,10 @@
     addMsg("user", "<p>" + escapeHtml(text) + "</p>");
     input.value = ""; autosize();
 
-    // Grievance / complaint intent — open the in-chat workflow instantly,
+    // Grievance / complaint intent â€” open the in-chat workflow instantly,
     // with the user's own words pre-filled so they can AI-draft from them.
     if (isGrievanceIntent(text)) {
-      addMsg("bot", "<p>Sure — I'll open the grievance form for you. Describe the problem below and we'll route it to the right office.</p>");
+      addMsg("bot", "<p>Sure â€” I'll open the grievance form for you. Describe the problem below and we'll route it to the right office.</p>");
       govStart(grievancePrefill(text), "");
       govAutoMatchAuthority(text);
       return;
@@ -899,7 +718,7 @@
     ensureAuth().then(function () {
       if (!state.token) {
         removeTyping(); hideSpinner();
-        addMsg("bot", "<p>⚠️ Authentication failed. Please refresh the page to try again.</p>");
+        addMsg("bot", "<p>âš ï¿½? Authentication failed. Please refresh the page to try again.</p>");
         return;
       }
       state.streaming = true;
@@ -918,7 +737,7 @@
             console.warn("[CUS] Token rejected (HTTP 401). Re-authenticating...");
             state.token = null;
             state.authReady = false;
-            // Don't clearAuth() — keep credentials for re-login attempt
+            // Don't clearAuth() â€” keep credentials for re-login attempt
             (function attempt(creds) {
               if (creds) {
                 return _doLogin(creds.user, creds.pass).then(function () {
@@ -939,7 +758,7 @@
                 doChat(text, true);
               }).catch(function (e) {
                 removeTyping(); hideSpinner();
-                addMsg("bot", "<p>⚠️ Cannot authenticate. Please refresh the page.</p>");
+                addMsg("bot", "<p>âš ï¿½? Cannot authenticate. Please refresh the page.</p>");
                 state.streaming = false;
               });
             })(state.authUser && state.authPass ? { user: state.authUser, pass: state.authPass } : null);
@@ -948,23 +767,23 @@
           // Non-401 error or already retried
           if (resp.status === 401) {
             removeTyping(); hideSpinner();
-            addMsg("bot", "<p>⚠️ Still unauthorized after re-authentication. Please refresh the page.</p>");
+            addMsg("bot", "<p>âš ï¿½? Still unauthorized after re-authentication. Please refresh the page.</p>");
             state.streaming = false; hideSpinner();
           } else {
             logErr("POST", chatUrl, resp.status, "HTTP error");
             resp.text().then(function (t) { logErr("POST", chatUrl, resp.status, t); }).catch(function () {});
             removeTyping(); hideSpinner();
-            addMsg("bot", "<p>⚠️ Server error (HTTP " + resp.status + "). Please try again.</p>");
+            addMsg("bot", "<p>âš ï¿½? Server error (HTTP " + resp.status + "). Please try again.</p>");
             state.streaming = false; hideSpinner();
           }
           return;
         }
 
-        // Successful response — stream tokens or structured events
+        // Successful response â€” stream tokens or structured events
         var reader = resp.body.getReader(); var dec = new TextDecoder(); var buf = "";
         function read() {
           return reader.read().then(function (r) {
-            if (r.done) { finish(); return; }  // stream closed — keep any partial answer
+            if (r.done) { finish(); return; }  // stream closed â€” keep any partial answer
             buf += dec.decode(r.value, { stream: true });
             var blocks = buf.split("\n\n"); buf = blocks.pop();
             for (var i = 0; i < blocks.length; i++) {
@@ -991,39 +810,39 @@
                 try { var ed = JSON.parse(data); if (ed && ed.message) errMsg = ed.message; if (ed && ed.ref) errRef = ed.ref; } catch (e) {}
                 if (errRef) errMsg += " (Ref: " + errRef + ")";
                 removeTyping(); hideSpinner();
-                addMsg("bot", "<p>⚠️ " + errMsg.replace(/[<>&]/g, function (c) { return {"<":"&lt;",">":"&gt;","&":"&amp;"}[c]; }) + "</p>");
+                addMsg("bot", "<p>âš ï¿½? " + errMsg.replace(/[<>&]/g, function (c) { return {"<":"&lt;",">":"&gt;","&":"&amp;"}[c]; }) + "</p>");
                 state.streaming = false;
                 if (assistantHtml && !msgObj) { msgObj = addMsg("bot", renderMarkdown(assistantHtml), cites); }
                 return;
               } else if (ev === "options") {
                 // Structured navigation options
                 removeTyping(); hideSpinner();
-                try { var optsData = JSON.parse(data); renderOptions(optsData); if (optsData._query && optsData._query.corrected) trackCorrection(optsData._query); } catch (e) { addMsg("bot", "<p>⚠️ Could not load options.</p>"); }
+                try { var optsData = JSON.parse(data); renderOptions(optsData); if (optsData._query && optsData._query.corrected) trackCorrection(optsData._query); } catch (e) { addMsg("bot", "<p>âš ï¿½? Could not load options.</p>"); }
               } else if (ev === "detail") {
                 // Structured detail card
                 removeTyping(); hideSpinner();
-                try { var detData = JSON.parse(data); renderDetail(detData); if (detData._query && detData._query.corrected) trackCorrection(detData._query); } catch (e) { addMsg("bot", "<p>⚠️ Could not load details.</p>"); }
+                try { var detData = JSON.parse(data); renderDetail(detData); if (detData._query && detData._query.corrected) trackCorrection(detData._query); } catch (e) { addMsg("bot", "<p>âš ï¿½? Could not load details.</p>"); }
               } else if (ev === "service_form") {
                 // Service param collection form (programme, semester, etc.)
                 removeTyping(); hideSpinner();
-                try { renderServiceForm(JSON.parse(data)); } catch (e) { addMsg("bot", "<p>⚠️ Could not load service form.</p>"); }
+                try { renderServiceForm(JSON.parse(data)); } catch (e) { addMsg("bot", "<p>âš ï¿½? Could not load service form.</p>"); }
               } else if (ev === "auth_form") {
                 // Student login form
                 removeTyping(); hideSpinner();
-                try { renderAuthForm(JSON.parse(data)); } catch (e) { addMsg("bot", "<p>⚠️ Could not load login form.</p>"); }
+                try { renderAuthForm(JSON.parse(data)); } catch (e) { addMsg("bot", "<p>âš ï¿½? Could not load login form.</p>"); }
               } else if (ev === "grievance") {
                 // Grievance intake: start the in-chat workflow with prefill
                 removeTyping(); hideSpinner();
                 try {
                   var gvPayload = JSON.parse(data).payload || {};
                   govStart(gvPayload.prefill || "", gvPayload.category || "");
-                  // Server-detected grievance (Hinglish markers, typos, ...) —
+                  // Server-detected grievance (Hinglish markers, typos, ...) â€”
                   // auto-preselect the office named in the message too.
                   var gvText = (gvPayload.prefill || "").trim() || text;
                   govAutoMatchAuthority(gvText);
-                } catch (e) { addMsg("bot", "<p>⚠️ Could not open the grievance form.</p>"); }
+                } catch (e) { addMsg("bot", "<p>âš ï¿½? Could not open the grievance form.</p>"); }
               } else if (ev === "queued" || ev === "processing") {
-                // Queue status events from the request manager — never render raw state.
+                // Queue status events from the request manager â€” never render raw state.
               } else if (data) {
                 assistantHtml += data;
                 if (!msgObj) { removeTyping(); msgObj = addMsg("bot", ""); }
@@ -1037,7 +856,7 @@
         return read();
       }).catch(function (e) {
         if (e.name !== "AbortError") {
-          removeTyping(); addMsg("bot", "<p>⚠️ Cannot connect to backend (" + API + "). Please ensure FastAPI is running.</p>");
+          removeTyping(); addMsg("bot", "<p>âš ï¿½? Cannot connect to backend (" + API + "). Please ensure FastAPI is running.</p>");
           console.error("[CUS] Network error:", e.message || e);
         }
       }).finally(function () { state.streaming = false; hideSpinner(); });
@@ -1045,7 +864,7 @@
       // ensureAuth() itself failed (register/login network error)
       removeTyping(); hideSpinner();
       console.error("[CUS] ensureAuth failed:", err.message || err);
-      addMsg("bot", "<p>⚠️ Cannot reach the backend (" + API + "). Please ensure FastAPI is running.</p>");
+      addMsg("bot", "<p>âš ï¿½? Cannot reach the backend (" + API + "). Please ensure FastAPI is running.</p>");
     });
 
     function finish() {
@@ -1062,7 +881,7 @@
             var id = c.document_id || c.document_title || c.source;
             if (id && seen[id]) return; if (id) seen[id] = 1;
             var el = document.createElement("span"); el.className = "cite";
-            el.innerHTML = "<b>" + escapeHtml(c.document_title || c.source || "Document") + "</b>" + (c.score != null ? " · " + Number(c.score).toFixed(2) : "");
+            el.innerHTML = "<b>" + escapeHtml(c.document_title || c.source || "Document") + "</b>" + (c.score != null ? " Â· " + Number(c.score).toFixed(2) : "");
             cwrap.appendChild(el);
           });
           msgObj.msgEl.parentNode.insertBefore(cwrap, msgObj.toolsEl);
@@ -1072,14 +891,14 @@
   }
 
   /* =====================================================================
-     Grievance workflow — IN-CHAT state machine (Phase 5)
-     Modes:  idle → authorities → authority_select → composing →
-             generating → review → details → final_review →
-             submitting → success | error
+     Grievance workflow â€” IN-CHAT state machine (Phase 5)
+     Modes:  idle â†’ authorities â†’ authority_select â†’ composing â†’
+             generating â†’ review â†’ details â†’ final_review â†’
+             submitting â†’ success | error
 
-     The whole workflow renders as a bot message INSIDE the chat — no
+     The whole workflow renders as a bot message INSIDE the chat â€” no
      overlay/modal, no page navigation. One trigger (chip / SSE event /
-     natural language) → one govStart().
+     natural language) â†’ one govStart().
      ===================================================================== */
   var GOV = {
     mode: "idle",
@@ -1150,7 +969,7 @@
   // When the user names an office in their grievance message ("I want to
   // complain to Dean Science"), the backend match endpoint resolves it
   // against REAL ACTIVE authorities. On a unique confident match the office
-  // is preselected and the text-entry step opens directly — the student only
+  // is preselected and the text-entry step opens directly â€” the student only
   // reviews/confirms instead of picking from the list again.
   function govWaitAuthorities(cb, tries) {
     if (GOV.authorities.length) { cb(); return; }
@@ -1176,7 +995,7 @@
           for (var i = 0; i < GOV.authorities.length; i++) {
             if (GOV.authorities[i].authority_id === id) { found = GOV.authorities[i]; break; }
           }
-          if (!found) return; // not in the active list — show the picker
+          if (!found) return; // not in the active list â€” show the picker
           GOV.authority = found;
           // Display authority inside grievance panel, NOT in normal chat
           if (GOV.panel) {
@@ -1229,7 +1048,7 @@
     var html = '<div class="gsteps" aria-label="Grievance progress">';
     GOV_STEPS.forEach(function (s, i) {
       html += '<span class="gseg' + (cur === i ? " on" : cur > i ? " done" : "") + '">' + (i + 1) + "&nbsp;" + s + "</span>";
-      if (i < GOV_STEPS.length - 1) html += '<span class="garr">›</span>';
+      if (i < GOV_STEPS.length - 1) html += '<span class="garr">â€º</span>';
     });
     return html + "</div>";
   }
@@ -1247,7 +1066,7 @@
     if (GOV.mode === "idle") return;
 
     if (GOV.mode === "authorities") {
-      html = govRenderShell(0, '<p class="gint">Who would you like to submit your grievance to?</p><p class="gload">Loading authorities…</p>');
+      html = govRenderShell(0, '<p class="gint">Who would you like to submit your grievance to?</p><p class="gload">Loading authoritiesâ€¦</p>');
     } else if (GOV.mode === "authority_select") {
       var items = "";
       GOV.authorities.forEach(function (a) {
@@ -1269,31 +1088,31 @@
         '<label class="gfield" for="gv-in"><span>Your grievance / key points *</span>' +
           '<textarea id="gv-in" rows="4" placeholder="e.g. exam form is not showing for semester 3 and the last date is tomorrow">' +
             escapeHtml(GOV.original) + "</textarea></label>" +
-        '<p class="ghint">Enter = new line &nbsp;·&nbsp; Ctrl+Enter = continue</p>',
-        '<button type="button" class="gbtn primary" data-gov="ai-write">✨ Write formal grievance with AI</button>' +
+        '<p class="ghint">Enter = new line &nbsp;Â·&nbsp; Ctrl+Enter = continue</p>',
+        '<button type="button" class="gbtn primary" data-gov="ai-write">âœ¨ Write formal grievance with AI</button>' +
         '<button type="button" class="gbtn" data-gov="manual">Continue with my text</button>' +
-        '<button type="button" class="gbtn ghost" data-gov="back">← Back</button>' +
+        '<button type="button" class="gbtn ghost" data-gov="back">ï¿½? Back</button>' +
         '<button type="button" class="gbtn ghost" data-gov="cancel">Cancel Grievance</button>');
     } else if (GOV.mode === "generating") {
       html = govRenderShell(1,
-        '<p class="gint">Writing your formal grievance…</p>' +
+        '<p class="gint">Writing your formal grievanceâ€¦</p>' +
         '<p class="gload">The AI is drafting a respectful, professional version of your key points. It will not invent facts.</p>');
     } else if (GOV.mode === "review") {
       var note = GOV.draft.generated
-        ? "💡 Here is a formal version of your grievance. You can edit it below before continuing."
-        : "⚠️ The AI draft service is unavailable — please review your text below before continuing.";
+        ? "ðŸ’¡ Here is a formal version of your grievance. You can edit it below before continuing."
+        : "âš ï¿½? The AI draft service is unavailable â€” please review your text below before continuing.";
       html = govRenderShell(1,
         '<p class="gint">' + note + "</p>" +
         (GOV.draft.subject ? '<p class="gsub">Subject: <strong>' + escapeHtml(GOV.draft.subject) + "</strong></p>" : "") +
         '<label class="gfield" for="gv-txt"><span>Grievance text *</span>' +
           '<textarea id="gv-txt" rows="7">' + escapeHtml(GOV.draft.text) + "</textarea></label>" +
         '<p class="ghint">Ctrl+Enter = accept &amp; continue</p>',
-        '<button type="button" class="gbtn primary" data-gov="accept-draft">✔ Accept &amp; Continue</button>' +
-        '<button type="button" class="gbtn ghost" data-gov="back">← Back</button>' +
+        '<button type="button" class="gbtn primary" data-gov="accept-draft">âœ” Accept &amp; Continue</button>' +
+        '<button type="button" class="gbtn ghost" data-gov="back">ï¿½? Back</button>' +
         '<button type="button" class="gbtn ghost" data-gov="cancel">Cancel Grievance</button>');
     } else if (GOV.mode === "details") {
       html = govRenderShell(2,
-        '<p class="gint">Almost done — we need a few details so we can reach you about this grievance. These are kept private.</p>' +
+        '<p class="gint">Almost done â€” we need a few details so we can reach you about this grievance. These are kept private.</p>' +
         '<div class="ggrid">' +
           '<label class="gfield" for="gv-name"><span>First name *</span><input id="gv-name" maxlength="200" value="' + escapeHtml(GOV.student.name) + '"></label>' +
           '<label class="gfield" for="gv-roll"><span>Roll number *</span><input id="gv-roll" maxlength="50" value="' + escapeHtml(GOV.student.roll_number) + '"></label>' +
@@ -1302,7 +1121,7 @@
           '<label class="gfield gfull" for="gv-email"><span>Email *</span><input id="gv-email" type="email" maxlength="200" value="' + escapeHtml(GOV.student.email) + '"></label>' +
         "</div>",
         '<button type="button" class="gbtn primary" data-gov="to-review">Continue</button>' +
-        '<button type="button" class="gbtn ghost" data-gov="back">← Back</button>' +
+        '<button type="button" class="gbtn ghost" data-gov="back">ï¿½? Back</button>' +
         '<button type="button" class="gbtn ghost" data-gov="cancel">Cancel Grievance</button>');
     } else if (GOV.mode === "final_review") {
       html = govRenderShell(3,
@@ -1320,17 +1139,17 @@
         '<button type="button" class="gbtn primary" data-gov="submit">Submit Grievance</button>' +
         '<button type="button" class="gbtn" data-gov="edit-details">Edit Details</button>' +
         '<button type="button" class="gbtn" data-gov="edit-grievance">Edit Grievance</button>' +
-        '<button type="button" class="gbtn ghost" data-gov="back">← Back</button>' +
+        '<button type="button" class="gbtn ghost" data-gov="back">ï¿½? Back</button>' +
         '<button type="button" class="gbtn ghost" data-gov="cancel">Cancel Grievance</button>');
     } else if (GOV.mode === "submitting") {
-      html = govRenderShell(0, '<p class="gint">Submitting your grievance…</p><p class="gload">Please wait — this can take a few seconds.</p>');
+      html = govRenderShell(0, '<p class="gint">Submitting your grievanceâ€¦</p><p class="gload">Please wait â€” this can take a few seconds.</p>');
     } else if (GOV.mode === "success") {
       html = govRenderSuccess();
     } else if (GOV.mode === "error") {
       html = govRenderShell(0,
-        '<p class="gint">⚠️ ' + escapeHtml(GOV.errorMsg) + "</p>",
+        '<p class="gint">âš ï¿½? ' + escapeHtml(GOV.errorMsg) + "</p>",
         '<button type="button" class="gbtn primary" data-gov="retry">Retry</button>' +
-        '<button type="button" class="gbtn ghost" data-gov="back">← Back</button>' +
+        '<button type="button" class="gbtn ghost" data-gov="back">ï¿½? Back</button>' +
         '<button type="button" class="gbtn ghost" data-gov="cancel">Cancel Grievance</button>');
     }
     GOV.panel.innerHTML = html;
@@ -1343,7 +1162,7 @@
 
   function govCollegeSelect() {
     if (!GOV.colleges.length) {
-      return '<select id="gv-college" disabled><option value="">Loading colleges…</option></select>';
+      return '<select id="gv-college" disabled><option value="">Loading collegesâ€¦</option></select>';
     }
     var html = '<select id="gv-college"><option value="">-- Select college --</option>';
     GOV.colleges.forEach(function (c) {
@@ -1364,11 +1183,11 @@
 
   function govRenderShell(step, inner, actions) {
     return (
-      '<div class="gtitle">📋 File a Grievance</div>' +
+      '<div class="gtitle">ðŸ“‹ File a Grievance</div>' +
       govStepper() +
       inner +
       (actions ? '<div class="gactions">' + actions + "</div>" : "") +
-      '<button type="button" class="gbtn ghost g-cancel-x" data-gov="cancel">✕ Cancel</button>'
+      '<button type="button" class="gbtn ghost g-cancel-x" data-gov="cancel">âœ• Cancel</button>'
     );
   }
 
@@ -1378,13 +1197,13 @@
     var studentEmail = escapeHtml((GOV.student && GOV.student.email) || "");
     var mailState = [];
     if (d.authority_email_status === "sent") mailState.push("A copy has been emailed to <strong>" + escapeHtml(auth) + "</strong>.");
-    else if (d.authority_email_status === "failed") mailState.push("⚠️ Your grievance is saved, but the copy to <strong>" + escapeHtml(auth) + "</strong> could not be delivered right now and has been logged for retry. Keep your reference number safe.");
-    else mailState.push("ℹ️ The copy to the office could not be emailed yet — your grievance is saved and will be routed.");
+    else if (d.authority_email_status === "failed") mailState.push("âš ï¿½? Your grievance is saved, but the copy to <strong>" + escapeHtml(auth) + "</strong> could not be delivered right now and has been logged for retry. Keep your reference number safe.");
+    else mailState.push("â„¹ï¿½? The copy to the office could not be emailed yet â€” your grievance is saved and will be routed.");
     if (d.email_confirmed) mailState.push("A confirmation email has been sent to <strong>" + (studentEmail || "your address") + "</strong>.");
-    else mailState.push("⚠️ Your grievance is saved, but the confirmation email could not be delivered right now and has been logged for retry — keep your reference number and tracking token safe.");
+    else mailState.push("âš ï¿½? Your grievance is saved, but the confirmation email could not be delivered right now and has been logged for retry â€” keep your reference number and tracking token safe.");
     var html =
       '<div class="gsucc">' +
-        '<div class="gs-ok">✅</div>' +
+        '<div class="gs-ok">âœ…</div>' +
         '<h3 class="gs-title">Grievance Submitted Successfully</h3>' +
         '<p class="gs-line">Your grievance has been submitted to</p>' +
         '<p class="gs-auth">' + escapeHtml(auth) + "</p>" +
@@ -1397,7 +1216,7 @@
         '<p class="gs-msg">Status: <strong>' + escapeHtml(d.status || "submitted") + "</strong></p>" +
         '<p class="gs-mail">' + mailState.join(" ") + "</p>" +
         '<div class="gactions">' +
-          '<button type="button" class="gbtn primary" data-gov="track">🔎 Track Grievance</button>' +
+          '<button type="button" class="gbtn primary" data-gov="track">ðŸ”Ž Track Grievance</button>' +
           '<button type="button" class="gbtn" data-gov="done">Return to Chat</button>' +
         "</div>" +
       "</div>";
@@ -1457,7 +1276,7 @@
     if (act === "edit-grievance") { GOV.mode = "review"; govRender(); return; }
     if (act === "submit") { govSubmit(); return; }
     if (act === "retry") { govLoadAuthorities(); return; }
-    if (act === "done") { GOV.mode = "idle"; if (GOV.panel) { GOV.panel.remove(); GOV.panel = null; } addMsg("bot", "<p>You can start another grievance anytime — just say <strong>grievance</strong> or tap <strong>File a Grievance</strong>.</p>"); return; }
+    if (act === "done") { GOV.mode = "idle"; if (GOV.panel) { GOV.panel.remove(); GOV.panel = null; } addMsg("bot", "<p>You can start another grievance anytime â€” just say <strong>grievance</strong> or tap <strong>File a Grievance</strong>.</p>"); return; }
     if (act === "track") { govTrack(); return; }
   }
 
@@ -1544,7 +1363,7 @@ function govManualDraft() {
   }
 
   function govSubmit() {
-    if (GOV.submitting) { toast("Please wait — submitting…"); return; }
+    if (GOV.submitting) { toast("Please wait â€” submittingâ€¦"); return; }
     if (!GOV.authority) { toast("Please select an authority first."); return; }
     var txt = GOV.draft.text;
     if (!txt || txt.length < 10) { toast("Please finalise your grievance text first."); return; }
@@ -1582,14 +1401,14 @@ function govManualDraft() {
       });
     }).then(function (d) {
       GOV.receipt = d;
-      GOV.idemKey = null; // success → next submission is a fresh one
+      GOV.idemKey = null; // success â†’ next submission is a fresh one
       GOV.mode = "success";
       govRender();
-      toast("Grievance submitted ✅");
+      toast("Grievance submitted âœ…");
     }).catch(function (err) {
       GOV.submitting = false;
       GOV.mode = "error";
-      GOV.errorMsg = err && err.message ? err.message : "Submission failed — please try again.";
+      GOV.errorMsg = err && err.message ? err.message : "Submission failed â€” please try again.";
       govRender();
     });
   }
@@ -1605,14 +1424,14 @@ function govManualDraft() {
       })
       .then(function (v) {
         addMsg("bot",
-          "<p>📋 <strong>" + escapeHtml(v.reference) + "</strong></p>" +
+          "<p>ðŸ“‹ <strong>" + escapeHtml(v.reference) + "</strong></p>" +
           "<p>Status: <strong>" + escapeHtml(v.status || "submitted") + "</strong></p>" +
           "<p>Route: " + escapeHtml(v.authority_name || "Pending assignment") +
           (v.department_name ? " (" + escapeHtml(v.department_name) + ")" : "") + "</p>" +
           (v.submitted_at ? "<p>Submitted: " + escapeHtml(String(v.submitted_at).slice(0, 19).replace("T", " ")) + "</p>" : ""));
       })
       .catch(function () {
-        addMsg("bot", "<p>⚠️ Unable to check the status right now. Please try again later.</p>");
+        addMsg("bot", "<p>âš ï¿½? Unable to check the status right now. Please try again later.</p>");
       });
   }
 
@@ -1626,7 +1445,7 @@ function govManualDraft() {
     var isInput = tag === "INPUT" || tag === "SELECT";
     if (e.key !== "Enter") return;
     if (isTextarea) {
-      // Enter → newline · Ctrl/Cmd+Enter → primary action
+      // Enter â†’ newline Â· Ctrl/Cmd+Enter â†’ primary action
       if (!(e.ctrlKey || e.metaKey)) return; // default newline behaviour
       e.preventDefault();
       var p = govPrimary();
@@ -1703,7 +1522,7 @@ function govManualDraft() {
   document.addEventListener("keydown", govKeydown);
   document.addEventListener("keydown", function (e) {
     if (e.key === "Escape") {
-      if (state.streaming && state.controller) { state.controller.abort(); removeTyping(); hideSpinner(); addMsg("bot", "<p>⏹ Generation stopped.</p>"); state.streaming = false; sendBtn.disabled = false; }
+      if (state.streaming && state.controller) { state.controller.abort(); removeTyping(); hideSpinner(); addMsg("bot", "<p>ï¿½?ï¿½ Generation stopped.</p>"); state.streaming = false; sendBtn.disabled = false; }
       else if (panel.classList.contains("open")) { closeChat(); }
     }
   });
@@ -1715,7 +1534,7 @@ function govManualDraft() {
     ensureAuth().then(function () {
       console.log("[CUS] Pre-auth complete");
     }).catch(function (err) {
-      console.warn("[CUS] Pre-auth failed — will retry on first message:", err.message || err);
+      console.warn("[CUS] Pre-auth failed â€” will retry on first message:", err.message || err);
     }).finally(function () { _authPromise = null; });
   }
   addGreeting();
