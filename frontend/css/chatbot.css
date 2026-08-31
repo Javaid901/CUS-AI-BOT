@@ -256,7 +256,7 @@
   cursor: pointer;
   flex-shrink: 0;
 }
-#cusw .mic svg { width: 20px; height: 20px; }
+#cusw .mic svg { width: 20px; height: 20px; stroke-width: 1.5; stroke: #145a32; }
 
 /* Loading spinner inside send button */
 #cusw .input-wrap .send .spinner {
